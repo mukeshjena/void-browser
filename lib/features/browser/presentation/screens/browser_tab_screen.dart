@@ -4,12 +4,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../../shared/widgets/chrome_webview.dart';
 import '../../../../shared/widgets/chrome_search_bar.dart';
+import '../../../../shared/widgets/find_in_page_overlay.dart';
 import '../../../bookmarks/presentation/providers/bookmarks_provider.dart';
 import '../../../bookmarks/presentation/screens/bookmarks_screen.dart';
 import '../../../downloads/presentation/screens/downloads_screen_new.dart';
+import '../../../downloads/presentation/providers/download_manager_provider.dart';
 import '../../../settings/presentation/screens/settings_screen.dart';
 import '../../../settings/presentation/providers/settings_provider.dart';
 import '../../../discover/presentation/screens/discover_screen.dart';
+import '../../../reader_mode/presentation/screens/reader_mode_screen.dart';
+import '../providers/desktop_mode_provider.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../providers/tabs_provider.dart';
 import '../screens/tab_switcher_screen.dart';
@@ -25,6 +29,9 @@ class BrowserTabScreen extends ConsumerStatefulWidget {
 class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
   final Map<String, ChromeWebViewController> _webViewControllers = {};
   final Map<String, TextEditingController> _urlControllers = {};
+  final Map<String, ValueNotifier<int>> _findActiveMatches = {};
+  final Map<String, ValueNotifier<int>> _findTotalMatches = {};
+  final Map<String, OverlayEntry?> _findOverlayEntries = {};
   final Map<String, String> _currentUrls = {};
   final Map<String, String?> _currentTitles = {};
   final Map<String, bool> _isAppBarVisible = {};
@@ -34,8 +41,10 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
   final Map<String, DateTime> _lastLoadTime = {}; // Track when URL was last loaded for debouncing
   final Map<String, bool> _isInternalLoad = {}; // Track if we initiated the load (not external)
   final Map<String, List<String>> _navigationHistory = {}; // Track navigation history per tab
-  static const int _scrollThreshold = 10;
-  static const int _debounceMs = 1000; // 1 second debounce
+  final Map<String, DateTime> _lastScrollUpdate = {}; // Debounce scroll updates
+  static const int _scrollThreshold = 20; // Increased threshold to prevent flickering
+  static const int _scrollDebounceMs = 150; // Debounce time for scroll updates
+  static const int _debounceMs = 1000; // Debounce time for URL loading (1 second)
 
   @override
   void dispose() {
@@ -76,17 +85,56 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
   }
 
   void _handleScroll(String tabId, int x, int y) {
-    final delta = y - (_lastScrollY[tabId] ?? 0);
-    if (delta.abs() > _scrollThreshold) {
-      if (delta > 0 && (_isAppBarVisible[tabId] ?? true)) {
-        setState(() {
-          _isAppBarVisible[tabId] = false;
-        });
-      } else if (delta < 0 && !(_isAppBarVisible[tabId] ?? true)) {
+    // Don't hide app bar on discover page
+    final currentUrl = _currentUrls[tabId] ?? '';
+    final isDiscover = currentUrl == 'discover' || 
+                       currentUrl.isEmpty || 
+                       currentUrl == 'http://discover' || 
+                       currentUrl == 'https://discover';
+    
+    if (isDiscover) {
+      // Always show app bar on discover page
+      if (_isAppBarVisible[tabId] != true) {
         setState(() {
           _isAppBarVisible[tabId] = true;
         });
       }
+      return;
+    }
+    
+    final now = DateTime.now();
+    final lastUpdate = _lastScrollUpdate[tabId];
+    final lastScrollY = _lastScrollY[tabId] ?? 0;
+    
+    // Debounce scroll updates to reduce setState calls and prevent flickering
+    if (lastUpdate != null && now.difference(lastUpdate).inMilliseconds < _scrollDebounceMs) {
+      // Update last scroll position but don't process yet
+      _lastScrollY[tabId] = y;
+      return;
+    }
+    
+    // Calculate scroll delta
+    final delta = y - lastScrollY;
+    
+    // Only react to significant scroll changes to prevent flickering
+    if (delta.abs() < _scrollThreshold) {
+      _lastScrollY[tabId] = y;
+      return;
+    }
+    
+    // Determine if app bar should be visible (show when scrolling up, hide when scrolling down)
+    final shouldShow = delta < 0; // Negative delta means scrolling up
+    final currentlyVisible = _isAppBarVisible[tabId] ?? true;
+    
+    // Only update if state actually changed to prevent unnecessary rebuilds
+    if (shouldShow != currentlyVisible && mounted) {
+      _lastScrollUpdate[tabId] = now;
+      _lastScrollY[tabId] = y;
+      setState(() {
+        _isAppBarVisible[tabId] = shouldShow;
+      });
+    } else {
+      // Update scroll position even if state didn't change
       _lastScrollY[tabId] = y;
     }
   }
@@ -283,8 +331,7 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
                             ref.read(tabsProvider.notifier).createNewTab();
                             // Clear the controller for the new tab when it becomes active
                             WidgetsBinding.instance.addPostFrameCallback((_) {
-                              final newTabsState = ref.read(tabsProvider);
-                              final newActiveTab = newTabsState.activeTab;
+                              final newActiveTab = ref.read(tabsProvider).activeTab;
                               if (newActiveTab != null && newActiveTab.url == 'discover') {
                                 final newTabId = newActiveTab.id;
                                 if (!_urlControllers.containsKey(newTabId)) {
@@ -318,15 +365,14 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
                                       Navigator.pop(context);
                                       ref.read(tabsProvider.notifier).closeAllTabs();
                                       // Clear controllers for closed tabs
-                                      final remainingTabsState = ref.read(tabsProvider);
-                                      final remainingTabIds = remainingTabsState.tabs.map((t) => t.id).toSet();
+                                      final remainingTabIds = ref.read(tabsProvider).tabs.map((t) => t.id).toSet();
                                       _urlControllers.removeWhere((key, value) => !remainingTabIds.contains(key));
                                       _currentUrls.removeWhere((key, value) => !remainingTabIds.contains(key));
                                       _currentTitles.removeWhere((key, value) => !remainingTabIds.contains(key));
                                       _isAppBarVisible.removeWhere((key, value) => !remainingTabIds.contains(key));
                                       _lastScrollY.removeWhere((key, value) => !remainingTabIds.contains(key));
                                       // Initialize controller for new discover tab
-                                      final newActiveTab = remainingTabsState.activeTab;
+                                      final newActiveTab = ref.read(tabsProvider).activeTab;
                                       if (newActiveTab != null) {
                                         final newTabId = newActiveTab.id;
                                         if (!_urlControllers.containsKey(newTabId)) {
@@ -388,6 +434,97 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
                                 );
                               }
                             }
+                          },
+                        ),
+                        Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+                        ),
+                        // View Options
+                        _buildBrowserMenuItemWithCheckbox(
+                          context,
+                          icon: Icons.desktop_windows,
+                          title: 'Desktop Site',
+                          value: ref.watch(desktopModeProvider),
+                          onTap: () async {
+                            final currentMode = ref.read(desktopModeProvider);
+                            final newMode = !currentMode;
+                            
+                            // Update state and save to storage
+                            await ref.read(desktopModeProvider.notifier).setDesktopMode(newMode);
+                            
+                            // Close menu
+                            Navigator.pop(context);
+                            
+                            // Apply desktop mode and reload page
+                            final url = _currentUrls[tabId] ?? '';
+                            if (_webViewControllers[tabId] != null && url.isNotEmpty && url != 'discover') {
+                              _webViewControllers[tabId]!.setDesktopMode(newMode);
+                              // Page will reload automatically in setDesktopMode
+                            }
+                            
+                            // Show feedback
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(newMode 
+                                    ? '✓ Desktop mode enabled' 
+                                    : '✓ Mobile mode enabled'),
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                        _buildBrowserMenuItem(
+                          context,
+                          icon: Icons.article,
+                          title: 'Reader Mode',
+                          onTap: () async {
+                            Navigator.pop(context);
+                            final url = _currentUrls[tabId] ?? '';
+                            final title = _currentTitles[tabId] ?? '';
+                            if (url.isNotEmpty && url != 'discover' && _webViewControllers[tabId] != null) {
+                              // Extract content from page
+                              try {
+                                final content = await _webViewControllers[tabId]!.extractArticleContent();
+                                final pageTitle = title.isNotEmpty ? title : await _webViewControllers[tabId]!.currentTitle() ?? 'Untitled';
+                                if (mounted && content.isNotEmpty) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ReaderModeScreen(
+                                        url: url,
+                                        title: pageTitle,
+                                        content: content,
+                                      ),
+                                    ),
+                                  );
+                                } else {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Unable to extract article content')),
+                                    );
+                                  }
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Error opening reader mode')),
+                                  );
+                                }
+                              }
+                            }
+                          },
+                        ),
+                        _buildBrowserMenuItem(
+                          context,
+                          icon: Icons.search,
+                          title: 'Find in Page',
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showFindInPage(tabId);
                           },
                         ),
                         Divider(
@@ -493,6 +630,63 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
     );
   }
 
+  void _showFindInPage(String tabId) {
+    if (!_webViewControllers.containsKey(tabId) || _webViewControllers[tabId] == null) return;
+    
+    final TextEditingController findController = TextEditingController();
+    final ValueNotifier<int> activeMatchNotifier = ValueNotifier<int>(0);
+    final ValueNotifier<int> totalMatchesNotifier = ValueNotifier<int>(0);
+    final FocusNode focusNode = FocusNode();
+    
+    _findActiveMatches[tabId] = activeMatchNotifier;
+    _findTotalMatches[tabId] = totalMatchesNotifier;
+    
+    // Show find in page overlay at top using OverlayEntry (doesn't block scroll)
+    final overlayEntry = OverlayEntry(
+      builder: (context) {
+        return Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            top: true,
+            bottom: false,
+            child: Material(
+              elevation: 4,
+              child: FindInPageOverlay(
+                controller: findController,
+                focusNode: focusNode,
+                activeMatch: activeMatchNotifier,
+                totalMatches: totalMatchesNotifier,
+                onFind: (text) {
+                  if (text.isNotEmpty) {
+                    _webViewControllers[tabId]?.findInPage(text);
+                  } else {
+                    _webViewControllers[tabId]?.clearFind();
+                    activeMatchNotifier.value = 0;
+                    totalMatchesNotifier.value = 0;
+                  }
+                },
+                onFindNext: () => _webViewControllers[tabId]?.findNext(),
+                onFindPrevious: () => _webViewControllers[tabId]?.findPrevious(),
+                onClose: () {
+                  _webViewControllers[tabId]?.clearFind();
+                  _findActiveMatches.remove(tabId);
+                  _findTotalMatches.remove(tabId);
+                  _findOverlayEntries[tabId]?.remove();
+                  _findOverlayEntries.remove(tabId);
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    
+    _findOverlayEntries[tabId] = overlayEntry;
+    Overlay.of(context).insert(overlayEntry);
+  }
+
   Widget _buildBrowserMenuItem(
     BuildContext context, {
     required IconData icon,
@@ -517,11 +711,44 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
     );
   }
 
+  Widget _buildBrowserMenuItemWithCheckbox(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required bool value,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, size: 20),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(fontSize: 14),
+              ),
+            ),
+            Checkbox(
+              value: value,
+              onChanged: (newValue) => onTap(),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final tabsState = ref.watch(tabsProvider);
-    final activeTab = tabsState.activeTab;
-    final tabCount = tabsState.tabCount;
+    // Use select to only watch specific fields to reduce rebuilds
+    final activeTab = ref.watch(tabsProvider.select((state) => state.activeTab));
+    final tabCount = ref.watch(tabsProvider.select((state) => state.tabCount));
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (activeTab == null) {
@@ -538,20 +765,29 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
       _urlControllers[tabId] = TextEditingController(text: isDiscover ? '' : activeTab.url);
       _currentUrls[tabId] = activeTab.url;
       _currentTitles[tabId] = activeTab.title;
-      _isAppBarVisible[tabId] = true;
+      _isAppBarVisible[tabId] = true; // Always show app bar initially
       _navigationHistory[tabId] = [];
     } else {
+      // Ensure app bar is visible on discover page
+      if (isDiscover && _isAppBarVisible[tabId] != true) {
+        _isAppBarVisible[tabId] = true;
+      }
       // Update controller text when switching tabs to show current tab's URL
-      final currentUrl = isDiscover ? '' : (_currentUrls[tabId] ?? activeTab.url);
-      if (_urlControllers[tabId]!.text != currentUrl) {
+      // Also handle case where tab URL changes from "discover" to a real URL
+      final shouldShowUrl = !isDiscover && activeTab.url != 'discover';
+      final currentUrl = shouldShowUrl ? activeTab.url : '';
+      
+      // Update URL controller text if it doesn't match the current tab URL
+      if (shouldShowUrl && _urlControllers[tabId]!.text != currentUrl) {
         _urlControllers[tabId]!.text = currentUrl;
+      } else if (!shouldShowUrl && _urlControllers[tabId]!.text.isNotEmpty) {
+        _urlControllers[tabId]!.text = '';
       }
       
       // Check if tab URL was updated externally (e.g., from TabUtils)
-      // Only load if it's NOT an internal load (we didn't just call _loadUrl ourselves)
-      if (!isDiscover && activeTab.url != 'discover' && 
+      // This handles the case where URL changes from "discover" to a real URL
+      if (activeTab.url != 'discover' && 
           activeTab.url != _currentUrls[tabId] && 
-          _webViewControllers[tabId] != null &&
           _isLoadingUrl[tabId] != true &&
           _lastLoadedUrl[tabId] != activeTab.url &&
           _isInternalLoad[tabId] != true) { // Only if NOT an internal load
@@ -560,10 +796,20 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
         final shouldLoad = lastLoadTime == null || 
             DateTime.now().difference(lastLoadTime).inMilliseconds >= _debounceMs;
         
-        if (shouldLoad) {
-          // URL was updated externally, load it in WebView
-          _isInternalLoad[tabId] = false; // Mark as external
-          _loadUrl(tabId, activeTab.url, ref);
+        if (shouldLoad && mounted) {
+          // URL was updated externally, update current URL and load it
+          setState(() {
+            _currentUrls[tabId] = activeTab.url;
+            if (_urlControllers[tabId] != null) {
+              _urlControllers[tabId]!.text = activeTab.url;
+            }
+          });
+          
+          // Load URL in WebView if it exists, otherwise it will be loaded when WebView is created
+          if (_webViewControllers[tabId] != null) {
+            _isInternalLoad[tabId] = false; // Mark as external
+            _loadUrl(tabId, activeTab.url, ref);
+          }
         }
       } else if (_isInternalLoad[tabId] == true) {
         // Reset internal load flag after processing
@@ -571,6 +817,13 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
           if (mounted) {
             _isInternalLoad[tabId] = false;
           }
+        });
+      }
+      
+      // Update current URL if tab URL changed (even if it's discover)
+      if (activeTab.url != _currentUrls[tabId] && mounted) {
+        setState(() {
+          _currentUrls[tabId] = activeTab.url;
         });
       }
     }
@@ -623,10 +876,10 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeInOut,
-            height: (_isAppBarVisible[tabId] ?? true) ? appBarHeight : MediaQuery.of(context).padding.top,
+            height: (isDiscover || (_isAppBarVisible[tabId] ?? true)) ? appBarHeight : MediaQuery.of(context).padding.top,
             child: AnimatedOpacity(
               duration: const Duration(milliseconds: 200),
-              opacity: (_isAppBarVisible[tabId] ?? true) ? 1.0 : 0.0,
+              opacity: (isDiscover || (_isAppBarVisible[tabId] ?? true)) ? 1.0 : 0.0,
               child: AppBar(
                 automaticallyImplyLeading: false,
                 title: ChromeSearchBar(
@@ -644,8 +897,7 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
                       ref.read(tabsProvider.notifier).createNewTab();
                       // Clear the controller for the new tab when it becomes active
                       WidgetsBinding.instance.addPostFrameCallback((_) {
-                        final newTabsState = ref.read(tabsProvider);
-                        final newActiveTab = newTabsState.activeTab;
+                        final newActiveTab = ref.read(tabsProvider).activeTab;
                         if (newActiveTab != null && newActiveTab.url == 'discover') {
                           final newTabId = newActiveTab.id;
                           if (!_urlControllers.containsKey(newTabId)) {
@@ -713,18 +965,92 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
                 : ChromeWebView(
                     // Use tabId as key to maintain WebView instance and preserve history
                     key: ValueKey('webview_$tabId'),
-                    initialUrl: _getValidUrlForWebView(_currentUrls[tabId] ?? activeTab.url),
+                    initialUrl: _getValidUrlForWebView(activeTab.url),
+                    onDownloadRequested: (url, filename) async {
+                      // Handle download request from WebView
+                      try {
+                        await ref.read(downloadManagerProvider.notifier).startDownload(
+                          url: url,
+                          filename: filename,
+                          sourceType: null, // Generic file download
+                        );
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Row(
+                                children: [
+                                  Icon(Icons.download, color: Colors.white),
+                                  SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      'Download started! Check Downloads page for progress.',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              backgroundColor: Colors.green,
+                              duration: Duration(seconds: 3),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Download failed: ${e.toString()}'),
+                              backgroundColor: Colors.red,
+                              duration: const Duration(seconds: 3),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    onFindResult: (activeMatch, totalMatches) {
+                      if (_findActiveMatches.containsKey(tabId) && _findTotalMatches.containsKey(tabId)) {
+                        _findActiveMatches[tabId]!.value = activeMatch;
+                        _findTotalMatches[tabId]!.value = totalMatches;
+                      }
+                    },
                     onWebViewCreated: (controller) {
                       _webViewControllers[tabId] = controller;
                       // Load URL if it was set before WebView was created
-                      final urlToLoad = _currentUrls[tabId] ?? activeTab.url;
+                      // Use activeTab.url to get the most up-to-date URL (might have been updated by TabUtils)
+                      final urlToLoad = activeTab.url;
                       if (urlToLoad != 'discover' && urlToLoad.isNotEmpty && 
                           urlToLoad != 'http://discover' && urlToLoad != 'https://discover' &&
                           urlToLoad != 'http://discover/' && urlToLoad != 'https://discover/') {
+                        // Update current URL state
+                        if (mounted) {
+                          setState(() {
+                            _currentUrls[tabId] = urlToLoad;
+                            if (_urlControllers[tabId] != null) {
+                              _urlControllers[tabId]!.text = urlToLoad;
+                            }
+                          });
+                        }
+                        
                         // Small delay to ensure WebView is ready
                         Future.delayed(const Duration(milliseconds: 100), () {
                           if (mounted && _webViewControllers[tabId] != null) {
                             controller.loadUrl(urlToLoad);
+                            // Apply saved desktop mode preference after loading
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              final desktopMode = ref.read(desktopModeProvider);
+                              if (desktopMode) {
+                                controller.setDesktopMode(desktopMode);
+                              }
+                            });
+                          }
+                        });
+                      } else {
+                        // Apply saved desktop mode preference even for discover page
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          final desktopMode = ref.read(desktopModeProvider);
+                          if (desktopMode && urlToLoad != 'discover') {
+                            controller.setDesktopMode(desktopMode);
                           }
                         });
                       }
@@ -742,31 +1068,38 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
                         final timeSinceLastLoad = DateTime.now().difference(lastLoadTime).inMilliseconds;
                         if (timeSinceLastLoad < _debounceMs) {
                           // This is likely the same load, just update state without triggering tab update
-                          setState(() {
-                            _currentUrls[tabId] = url;
-                            _isLoadingUrl[tabId] = false;
-                            if (_urlControllers[tabId] != null && _urlControllers[tabId]!.text != url) {
-                              _urlControllers[tabId]!.text = url;
-                            }
-                          });
+                          if (_urlControllers[tabId] != null && _urlControllers[tabId]!.text != url) {
+                            _urlControllers[tabId]!.text = url;
+                          }
+                          // Update state without setState if only URL controller changed
+                          _currentUrls[tabId] = url;
+                          _isLoadingUrl[tabId] = false;
                           return;
                         }
                       }
                       
-                      // Update controller text immediately to show current URL
+                      // Update controller text immediately to show current URL (no setState needed)
                       if (_urlControllers[tabId] != null && _urlControllers[tabId]!.text != url) {
                         _urlControllers[tabId]!.text = url;
                       }
-                      setState(() {
-                        _currentUrls[tabId] = url;
-                        _isLoadingUrl[tabId] = false; // Reset loading flag
-                        _lastLoadedUrl[tabId] = url; // Update last loaded URL
-                        _lastLoadTime[tabId] = DateTime.now(); // Update load time
-                      });
+                      
+                      // Batch state updates - get title first, then update everything in one setState
                       final title = await _webViewControllers[tabId]?.currentTitle() ?? '';
-                      setState(() {
-                        _currentTitles[tabId] = title;
-                      });
+                      final isDiscoverUrl = url == 'discover' || url.isEmpty;
+                      if (mounted) {
+                        setState(() {
+                          _currentUrls[tabId] = url;
+                          _isLoadingUrl[tabId] = false; // Reset loading flag
+                          _lastLoadedUrl[tabId] = url; // Update last loaded URL
+                          _lastLoadTime[tabId] = DateTime.now(); // Update load time
+                          _currentTitles[tabId] = title;
+                          // Ensure app bar is visible on discover page
+                          if (isDiscoverUrl) {
+                            _isAppBarVisible[tabId] = true;
+                          }
+                        });
+                      }
+                      
                       ref.read(tabsProvider.notifier).updateTab(
                             tabId: tabId,
                             url: url,

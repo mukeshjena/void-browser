@@ -21,7 +21,10 @@ class _NewsCarouselWidgetState extends ConsumerState<NewsCarouselWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final newsState = ref.watch(newsProvider);
+    // Use select to only watch specific fields to reduce rebuilds
+    final articles = ref.watch(newsProvider.select((state) => state.articles));
+    final isLoading = ref.watch(newsProvider.select((state) => state.isLoading));
+    final error = ref.watch(newsProvider.select((state) => state.error));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -39,13 +42,13 @@ class _NewsCarouselWidgetState extends ConsumerState<NewsCarouselWidget> {
               ),
               Row(
                 children: [
-                  if (newsState.isLoading)
+                  if (isLoading)
                     const SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
-                  if (!newsState.isLoading && newsState.articles.isNotEmpty)
+                  if (!isLoading && articles.isNotEmpty)
                     TextButton(
                       onPressed: () {
                         // Navigate to News tab (index 1 in bottom navigation)
@@ -58,29 +61,34 @@ class _NewsCarouselWidgetState extends ConsumerState<NewsCarouselWidget> {
             ],
           ),
         ),
-        if (newsState.error != null)
+        if (error != null)
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Text(
-              newsState.error!,
+              error,
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ),
-        if (newsState.articles.isEmpty && !newsState.isLoading)
+        if (articles.isEmpty && !isLoading)
           const Padding(
             padding: EdgeInsets.all(16.0),
             child: Text('No news articles available'),
           ),
-        if (newsState.articles.isNotEmpty)
-          SizedBox(
-            height: 220, // Match the new card height
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: newsState.articles.length,
-              itemBuilder: (context, index) {
-                return NewsCardWidget(article: newsState.articles[index]);
-              },
+        if (articles.isNotEmpty)
+          RepaintBoundary(
+            child: SizedBox(
+              height: 220, // Match the new card height
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: articles.length,
+                itemBuilder: (context, index) {
+                  return NewsCardWidget(
+                    key: ValueKey('news_carousel_${articles[index].id}_$index'),
+                    article: articles[index],
+                  );
+                },
+              ),
             ),
           ),
       ],

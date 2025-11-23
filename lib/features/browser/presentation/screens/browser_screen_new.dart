@@ -4,11 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../../shared/widgets/chrome_webview.dart';
 import '../../../../shared/widgets/chrome_search_bar.dart';
+import '../../../../shared/widgets/find_in_page_overlay.dart';
 import '../../../bookmarks/presentation/providers/bookmarks_provider.dart';
 import '../../../bookmarks/presentation/screens/bookmarks_screen.dart';
 import '../../../downloads/presentation/screens/downloads_screen_new.dart';
+import '../../../downloads/presentation/providers/download_manager_provider.dart';
 import '../../../settings/presentation/screens/settings_screen.dart';
 import '../../../settings/presentation/providers/settings_provider.dart';
+import '../../../reader_mode/presentation/screens/reader_mode_screen.dart';
+import '../providers/desktop_mode_provider.dart';
 import '../../../../core/constants/api_constants.dart';
 
 /// Simple browser screen with Chrome-like UX
@@ -31,14 +35,20 @@ class BrowserScreenFullPage extends ConsumerStatefulWidget {
 class _BrowserScreenFullPageState extends ConsumerState<BrowserScreenFullPage> {
   final TextEditingController _urlController = TextEditingController();
   ChromeWebViewController? _webViewController;
-  bool _isDesktopMode = false;
   String _currentUrl = '';
   String _currentTitle = '';
   
   // AppBar visibility management
   bool _isAppBarVisible = true;
+  
+  // Find in page state
+  ValueNotifier<int>? _findActiveMatch;
+  ValueNotifier<int>? _findTotalMatches;
+  OverlayEntry? _findOverlayEntry;
   int _lastScrollY = 0;
-  static const int _scrollThreshold = 10; // Minimum scroll distance to trigger hide/show
+  DateTime? _lastScrollUpdate; // Debounce scroll updates
+  static const int _scrollThreshold = 20; // Increased threshold to prevent flickering
+  static const int _scrollDebounceMs = 150; // Debounce time for scroll updates
 
   @override
   void dispose() {
@@ -47,23 +57,54 @@ class _BrowserScreenFullPageState extends ConsumerState<BrowserScreenFullPage> {
   }
 
   void _handleScroll(int x, int y) {
-    // Calculate scroll direction
+    // Don't hide app bar on discover page or when URL is empty/discover
+    final isDiscover = _currentUrl == 'discover' || 
+                       _currentUrl.isEmpty || 
+                       _currentUrl == 'http://discover' || 
+                       _currentUrl == 'https://discover';
+    
+    if (isDiscover) {
+      // Always show app bar on discover page
+      if (!_isAppBarVisible) {
+        setState(() {
+          _isAppBarVisible = true;
+        });
+      }
+      return;
+    }
+    
+    final now = DateTime.now();
+    
+    // Debounce scroll updates to reduce setState calls and prevent flickering
+    if (_lastScrollUpdate != null && now.difference(_lastScrollUpdate!).inMilliseconds < _scrollDebounceMs) {
+      // Update last scroll position but don't process yet
+      _lastScrollY = y;
+      return;
+    }
+    
+    // Calculate scroll delta
     final scrollDelta = y - _lastScrollY;
     
-    // Only react to significant scroll changes
-    if (scrollDelta.abs() < _scrollThreshold) return;
-    
-    setState(() {
-      // Scrolling up (positive delta) - hide AppBar
-      // Scrolling down (negative delta) - show AppBar
-      if (scrollDelta > 0 && _isAppBarVisible) {
-        _isAppBarVisible = false;
-      } else if (scrollDelta < 0 && !_isAppBarVisible) {
-        _isAppBarVisible = true;
-      }
-      
+    // Only react to significant scroll changes to prevent flickering
+    if (scrollDelta.abs() < _scrollThreshold) {
       _lastScrollY = y;
-    });
+      return;
+    }
+    
+    // Determine if app bar should be visible (show when scrolling up, hide when scrolling down)
+    final shouldShow = scrollDelta < 0; // Negative delta means scrolling up
+    
+    // Only update if state actually changed to prevent unnecessary rebuilds
+    if (shouldShow != _isAppBarVisible && mounted) {
+      _lastScrollUpdate = now;
+      _lastScrollY = y;
+      setState(() {
+        _isAppBarVisible = shouldShow;
+      });
+    } else {
+      // Update scroll position even if state didn't change
+      _lastScrollY = y;
+    }
   }
 
   void _loadUrl(String input, WidgetRef ref) {
@@ -233,35 +274,78 @@ class _BrowserScreenFullPageState extends ConsumerState<BrowserScreenFullPage> {
                         ),
                         
                         // View Options
-                        _buildBrowserMenuItem(
+                        _buildBrowserMenuItemWithCheckbox(
                           context,
-                          icon: _isDesktopMode ? Icons.phone_android : Icons.desktop_windows,
-                          title: _isDesktopMode ? 'Mobile Site' : 'Desktop Site',
-                          onTap: () {
+                          icon: Icons.desktop_windows,
+                          title: 'Desktop Site',
+                          value: ref.watch(desktopModeProvider),
+                          onTap: () async {
+                            final currentMode = ref.read(desktopModeProvider);
+                            final newMode = !currentMode;
+                            
+                            // Update state and save to storage
+                            await ref.read(desktopModeProvider.notifier).setDesktopMode(newMode);
+                            
+                            // Close menu
                             Navigator.pop(context);
-                            setState(() {
-                              _isDesktopMode = !_isDesktopMode;
-                            });
-                            _webViewController?.setDesktopMode(_isDesktopMode);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(_isDesktopMode 
-                                  ? '✓ Desktop mode enabled' 
-                                  : '✓ Mobile mode enabled'),
-                              ),
-                            );
+                            
+                            // Apply desktop mode and reload page
+                            if (_webViewController != null && _currentUrl.isNotEmpty) {
+                              _webViewController!.setDesktopMode(newMode);
+                              // Page will reload automatically in setDesktopMode
+                            }
+                            
+                            // Show feedback
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(newMode 
+                                    ? '✓ Desktop mode enabled' 
+                                    : '✓ Mobile mode enabled'),
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
                           },
                         ),
                         _buildBrowserMenuItem(
                           context,
                           icon: Icons.article,
                           title: 'Reader Mode',
-                          onTap: () {
+                          onTap: () async {
                             Navigator.pop(context);
-                            _webViewController?.enableReaderMode();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Opening in reader mode...')),
-                            );
+                            if (_currentUrl.isNotEmpty && _webViewController != null) {
+                              try {
+                                final content = await _webViewController!.extractArticleContent();
+                                final pageTitle = _currentTitle.isNotEmpty 
+                                    ? _currentTitle 
+                                    : await _webViewController!.currentTitle() ?? 'Untitled';
+                                if (mounted && content.isNotEmpty) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ReaderModeScreen(
+                                        url: _currentUrl,
+                                        title: pageTitle,
+                                        content: content,
+                                      ),
+                                    ),
+                                  );
+                                } else {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Unable to extract article content')),
+                                    );
+                                  }
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Error opening reader mode')),
+                                  );
+                                }
+                              }
+                            }
                           },
                         ),
                         _buildBrowserMenuItem(
@@ -367,6 +451,39 @@ class _BrowserScreenFullPageState extends ConsumerState<BrowserScreenFullPage> {
     );
   }
 
+  Widget _buildBrowserMenuItemWithCheckbox(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required bool value,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, size: 20),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(fontSize: 14),
+              ),
+            ),
+            Checkbox(
+              value: value,
+              onChanged: (newValue) => onTap(),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildQuickActionButton(
     BuildContext context, {
     required IconData icon,
@@ -384,45 +501,60 @@ class _BrowserScreenFullPageState extends ConsumerState<BrowserScreenFullPage> {
   }
 
   void _showFindInPage() {
-    final TextEditingController findController = TextEditingController();
+    if (_webViewController == null) return;
     
-    showDialog(
-      context: context,
+    final TextEditingController findController = TextEditingController();
+    final ValueNotifier<int> activeMatchNotifier = ValueNotifier<int>(0);
+    final ValueNotifier<int> totalMatchesNotifier = ValueNotifier<int>(0);
+    final FocusNode focusNode = FocusNode();
+    
+    _findActiveMatch = activeMatchNotifier;
+    _findTotalMatches = totalMatchesNotifier;
+    
+    // Show find in page overlay at top using OverlayEntry (doesn't block scroll)
+    final overlayEntry = OverlayEntry(
       builder: (context) {
-        return AlertDialog(
-          title: const Text('Find in Page'),
-          content: TextField(
-            controller: findController,
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: 'Enter text to find',
-              prefixIcon: Icon(Icons.search),
+        return Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: SafeArea(
+            top: true,
+            bottom: false,
+            child: Material(
+              elevation: 4,
+              child: FindInPageOverlay(
+                controller: findController,
+                focusNode: focusNode,
+                activeMatch: activeMatchNotifier,
+                totalMatches: totalMatchesNotifier,
+                onFind: (text) {
+                  if (text.isNotEmpty) {
+                    _webViewController?.findInPage(text);
+                  } else {
+                    _webViewController?.clearFind();
+                    activeMatchNotifier.value = 0;
+                    totalMatchesNotifier.value = 0;
+                  }
+                },
+                onFindNext: () => _webViewController?.findNext(),
+                onFindPrevious: () => _webViewController?.findPrevious(),
+                onClose: () {
+                  _webViewController?.clearFind();
+                  _findActiveMatch = null;
+                  _findTotalMatches = null;
+                  _findOverlayEntry?.remove();
+                  _findOverlayEntry = null;
+                },
+              ),
             ),
-            onSubmitted: (value) {
-              if (value.isNotEmpty) {
-                _webViewController?.findInPage(value);
-                Navigator.pop(context);
-              }
-            },
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (findController.text.isNotEmpty) {
-                  _webViewController?.findInPage(findController.text);
-                  Navigator.pop(context);
-                }
-              },
-              child: const Text('Find'),
-            ),
-          ],
         );
       },
     );
+    
+    _findOverlayEntry = overlayEntry;
+    Overlay.of(context).insert(overlayEntry);
   }
 
   void _showExitDialog(BuildContext context) {
@@ -474,10 +606,12 @@ class _BrowserScreenFullPageState extends ConsumerState<BrowserScreenFullPage> {
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeInOut,
-            height: _isAppBarVisible ? kToolbarHeight + MediaQuery.of(context).padding.top : MediaQuery.of(context).padding.top,
+            height: (_currentUrl == 'discover' || _currentUrl.isEmpty || _isAppBarVisible) 
+                ? kToolbarHeight + MediaQuery.of(context).padding.top 
+                : MediaQuery.of(context).padding.top,
             child: AnimatedOpacity(
               duration: const Duration(milliseconds: 200),
-              opacity: _isAppBarVisible ? 1.0 : 0.0,
+              opacity: (_currentUrl == 'discover' || _currentUrl.isEmpty || _isAppBarVisible) ? 1.0 : 0.0,
               child: AppBar(
                 automaticallyImplyLeading: false, // Remove back button
         title: ChromeSearchBar(
@@ -505,16 +639,80 @@ class _BrowserScreenFullPageState extends ConsumerState<BrowserScreenFullPage> {
           Expanded(
             child: ChromeWebView(
               initialUrl: widget.initialUrl ?? 'https://www.google.com',
+              onDownloadRequested: (url, filename) async {
+                // Handle download request from WebView
+                try {
+                  await ref.read(downloadManagerProvider.notifier).startDownload(
+                    url: url,
+                    filename: filename,
+                    sourceType: null, // Generic file download
+                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Row(
+                          children: [
+                            Icon(Icons.download, color: Colors.white),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Download started! Check Downloads page for progress.',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        backgroundColor: Colors.green,
+                        duration: Duration(seconds: 3),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Download failed: ${e.toString()}'),
+                        backgroundColor: Colors.red,
+                        duration: const Duration(seconds: 3),
+                      ),
+                    );
+                  }
+                }
+              },
+              onFindResult: (activeMatch, totalMatches) {
+                if (_findActiveMatch != null && _findTotalMatches != null) {
+                  _findActiveMatch!.value = activeMatch;
+                  _findTotalMatches!.value = totalMatches;
+                }
+              },
               onWebViewCreated: (controller) {
-                setState(() {
-                  _webViewController = controller;
+                if (mounted) {
+                  setState(() {
+                    _webViewController = controller;
+                  });
+                }
+                // Apply saved desktop mode preference when WebView is created
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  final desktopMode = ref.read(desktopModeProvider);
+                  if (desktopMode) {
+                    controller.setDesktopMode(desktopMode);
+                  }
                 });
               },
               onUrlChanged: (url) async {
-                setState(() {
-                  _currentUrl = url;
-                  _urlController.text = url;
-                });
+                final isDiscoverUrl = url == 'discover' || url.isEmpty;
+                if (mounted) {
+                  setState(() {
+                    _currentUrl = url;
+                    _urlController.text = url;
+                    // Ensure app bar is visible on discover page
+                    if (isDiscoverUrl) {
+                      _isAppBarVisible = true;
+                    }
+                  });
+                }
                 // Get page title
                 _currentTitle = await _webViewController?.currentTitle() ?? '';
               },

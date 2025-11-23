@@ -31,6 +31,10 @@ class SquareImageCard extends StatelessWidget {
             child: CachedNetworkImage(
               imageUrl: image.smallUrl,
               fit: BoxFit.cover,
+              fadeInDuration: const Duration(milliseconds: 200),
+              fadeOutDuration: const Duration(milliseconds: 100),
+              memCacheWidth: 300, // Limit memory cache size for better performance
+              memCacheHeight: 300,
               placeholder: (context, url) => Container(
                 color: Colors.grey[300],
                 child: const Center(

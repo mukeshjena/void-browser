@@ -24,7 +24,7 @@
 - 🚀 **Ultra-lightweight**: Optimized APK size (~16-19MB per architecture)
 - 🔒 **Privacy-focused**: Built-in ad-blocking with EasyList filters
 - 🎨 **Modern UI**: Chrome/Brave-inspired design with automatic light/dark mode
-- ⚡ **Fast & Responsive**: Optimized for low-end devices (1GB RAM minimum)
+- ⚡ **Fast & Responsive**: Optimized for low-end devices (1GB RAM minimum) with performance improvements
 - 🌐 **Multi-tab Browser**: Unlimited tabs with tab switcher
 - 📰 **Discovery Panel**: News, recipes, weather, and images
 - 📖 **Reader Mode**: Distraction-free reading experience
@@ -66,6 +66,7 @@
 - ✅ **Dark Mode**: Automatic light/dark mode following system preferences
 - ✅ **Caching**: Intelligent caching for better performance and offline support
 - ✅ **State Management**: Persistent state across app restarts
+- ✅ **Performance Optimized**: Reduced widget rebuilds, optimized scroll handling, and efficient memory usage
 
 ---
 

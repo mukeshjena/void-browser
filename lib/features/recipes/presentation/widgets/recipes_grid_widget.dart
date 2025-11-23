@@ -60,20 +60,25 @@ class _RecipesGridWidgetState extends ConsumerState<RecipesGridWidget> {
             child: Text('No recipes available'),
           ),
         if (recipesState.recipes.isNotEmpty)
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 0.82, // Increased from 0.75 to fix overflow
+          RepaintBoundary(
+            child: GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 0.82, // Increased from 0.75 to fix overflow
+              ),
+              itemCount: recipesState.recipes.length > 6 ? 6 : recipesState.recipes.length,
+              itemBuilder: (context, index) {
+                return RecipeCardWidget(
+                  key: ValueKey('recipe_grid_${recipesState.recipes[index].id}_$index'),
+                  recipe: recipesState.recipes[index],
+                );
+              },
             ),
-            itemCount: recipesState.recipes.length > 6 ? 6 : recipesState.recipes.length,
-            itemBuilder: (context, index) {
-              return RecipeCardWidget(recipe: recipesState.recipes[index]);
-            },
           ),
       ],
     );

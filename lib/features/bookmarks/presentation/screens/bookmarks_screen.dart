@@ -23,7 +23,8 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bookmarks = ref.watch(bookmarksProvider);
+    // Use select to only watch bookmarks list, not entire state
+    final bookmarks = ref.watch(bookmarksProvider.select((state) => state));
     final filteredBookmarks = _searchQuery.isEmpty
         ? bookmarks
         : ref.read(bookmarksProvider.notifier).searchBookmarks(_searchQuery);
@@ -96,36 +97,39 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                       ],
                     ),
                   )
-                : ListView.builder(
-                    itemCount: filteredBookmarks.length,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppDimensions.sm,
+                : RepaintBoundary(
+                    child: ListView.builder(
+                      itemCount: filteredBookmarks.length,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppDimensions.sm,
+                      ),
+                      itemBuilder: (context, index) {
+                        final bookmark = filteredBookmarks[index];
+                        return BookmarkItemWidget(
+                          key: ValueKey('bookmark_${bookmark.id}_$index'),
+                          bookmark: bookmark,
+                          onTap: () {
+                            // Navigate to URL in browser
+                            Navigator.pop(context, bookmark.url);
+                          },
+                          onDelete: () async {
+                            await ref
+                                .read(bookmarksProvider.notifier)
+                                .deleteBookmark(bookmark.id);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Bookmark deleted'),
+                                ),
+                              );
+                            }
+                          },
+                          onEdit: () {
+                            _showEditDialog(context, bookmark);
+                          },
+                        );
+                      },
                     ),
-                    itemBuilder: (context, index) {
-                      final bookmark = filteredBookmarks[index];
-                      return BookmarkItemWidget(
-                        bookmark: bookmark,
-                        onTap: () {
-                          // Navigate to URL in browser
-                          Navigator.pop(context, bookmark.url);
-                        },
-                        onDelete: () async {
-                          await ref
-                              .read(bookmarksProvider.notifier)
-                              .deleteBookmark(bookmark.id);
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Bookmark deleted'),
-                              ),
-                            );
-                          }
-                        },
-                        onEdit: () {
-                          _showEditDialog(context, bookmark);
-                        },
-                      );
-                    },
                   ),
           ),
         ],

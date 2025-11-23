@@ -35,6 +35,7 @@ dependencies:
   
   # Path Provider - REQUIRED
   path_provider: ^2.1.0
+  path: ^1.9.0
   
   # Shared Preferences - REQUIRED
   shared_preferences: ^2.2.0
@@ -48,6 +49,7 @@ dependencies:
   permission_handler: ^11.0.0
   geolocator: ^11.0.0
   share_plus: ^7.2.0
+  open_filex: ^4.3.3
   shimmer: ^3.0.0
   
   # HTTP Parser for reader mode

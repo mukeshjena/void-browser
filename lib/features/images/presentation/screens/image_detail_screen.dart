@@ -9,42 +9,69 @@ class ImageDetailScreen extends ConsumerWidget {
   const ImageDetailScreen({super.key, required this.image});
 
   void _downloadImage(BuildContext context, WidgetRef ref) async {
-    // Generate filename
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final filename = 'image_$timestamp.jpg';
+    // Permission will be checked and requested automatically in startDownload
+    // The system permission dialog will appear automatically (like location permission)
+
+    // Extract filename from URL or generate one
+    String filename;
+    try {
+      final uri = Uri.parse(image.regularUrl);
+      final pathSegments = uri.pathSegments;
+      if (pathSegments.isNotEmpty) {
+        final urlFilename = pathSegments.last;
+        if (urlFilename.contains('.')) {
+          filename = urlFilename;
+        } else {
+          filename = 'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        }
+      } else {
+        filename = 'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      }
+    } catch (e) {
+      filename = 'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    }
 
     // Start download using download manager
-    await ref.read(downloadManagerProvider.notifier).startDownload(
-      url: image.regularUrl,
-      filename: filename,
-      sourceType: 'image',
-    );
-
-    // Show success message
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.download, color: Colors.white),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Download started! Check Downloads page for progress.',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 3),
-          behavior: SnackBarBehavior.floating,
-        ),
+    try {
+      await ref.read(downloadManagerProvider.notifier).startDownload(
+        url: image.regularUrl,
+        filename: filename,
+        sourceType: 'image',
       );
 
-      // Navigate back
-      Navigator.of(context).pop();
+      // Show success message
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.download, color: Colors.white),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Download started! Check Downloads page for progress.',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Download failed: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 

@@ -58,6 +58,9 @@ class NewsCardWidget extends ConsumerWidget {
                   child: CachedNetworkImage(
                     imageUrl: article.imageUrl!,
                     fit: BoxFit.cover,
+                    fadeInDuration: const Duration(milliseconds: 200),
+                    fadeOutDuration: const Duration(milliseconds: 100),
+                    memCacheWidth: 400, // Limit memory cache size
                     placeholder: (context, url) => Container(
                       color: theme.colorScheme.surfaceVariant,
                       child: const Center(
@@ -161,6 +164,9 @@ class NewsCardWidget extends ConsumerWidget {
                 CachedNetworkImage(
                   imageUrl: article.imageUrl!,
                   fit: BoxFit.cover,
+                  fadeInDuration: const Duration(milliseconds: 200),
+                  fadeOutDuration: const Duration(milliseconds: 100),
+                  memCacheWidth: 400,
                   placeholder: (context, url) => Container(
                     color: theme.colorScheme.surfaceVariant,
                     child: const Center(child: CircularProgressIndicator()),

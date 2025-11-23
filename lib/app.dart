@@ -21,14 +21,15 @@ class VoidBrowserApp extends ConsumerWidget {
       ],
       child: Consumer(
         builder: (context, ref, child) {
-          final settings = ref.watch(settingsProvider);
+          // Use select to only watch themeMode, not entire settings
+          final themeMode = ref.watch(settingsProvider.select((state) => state.themeMode));
           
           return MaterialApp(
             title: AppConstants.appName,
             debugShowCheckedModeBanner: false,
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
-            themeMode: settings.themeMode,
+            themeMode: themeMode,
             home: const MainScreen(),
           );
         },

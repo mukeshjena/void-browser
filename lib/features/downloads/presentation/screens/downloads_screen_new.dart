@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:open_filex/open_filex.dart';
+import 'dart:io';
 import '../providers/download_manager_provider.dart';
 import '../../domain/entities/download_entity.dart';
 
@@ -115,23 +119,81 @@ class DownloadsScreenNew extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.folder_open, color: Colors.blue),
                   title: const Text('Open File'),
-                  onTap: () {
-                    // TODO: Open file with system app
+                  onTap: () async {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Open file coming soon!')),
-                    );
+                    if (download.savedPath != null && download.savedPath!.isNotEmpty) {
+                      final file = File(download.savedPath!);
+                      if (await file.exists()) {
+                        try {
+                          // Use open_filex for proper file opening on Android/iOS
+                          final result = await OpenFilex.open(download.savedPath!);
+                          
+                          if (context.mounted) {
+                            if (result.type != ResultType.done) {
+                              String message = 'Could not open file';
+                              if (result.type == ResultType.noAppToOpen) {
+                                message = 'No app found to open this file type';
+                              } else if (result.type == ResultType.fileNotFound) {
+                                message = 'File not found';
+                              } else if (result.type == ResultType.permissionDenied) {
+                                message = 'Permission denied to open file';
+                              } else if (result.type == ResultType.error) {
+                                message = result.message.isNotEmpty 
+                                    ? 'Error opening file: ${result.message}'
+                                    : 'Error opening file: Unknown error';
+                              }
+                              
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(message),
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            }
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Could not open file: ${e.toString()}'),
+                                duration: const Duration(seconds: 3),
+                              ),
+                            );
+                          }
+                        }
+                      } else {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('File not found'),
+                              duration: Duration(seconds: 3),
+                            ),
+                          );
+                        }
+                      }
+                    }
                   },
                 ),
                 ListTile(
                   leading: const Icon(Icons.share, color: Colors.green),
                   title: const Text('Share'),
-                  onTap: () {
-                    // TODO: Share file
+                  onTap: () async {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Share coming soon!')),
-                    );
+                    if (download.savedPath != null && download.savedPath!.isNotEmpty) {
+                      final file = File(download.savedPath!);
+                      if (await file.exists()) {
+                        await Share.shareXFiles(
+                          [XFile(download.savedPath!)],
+                          text: 'Shared from Void Browser',
+                        );
+                      } else {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('File not found')),
+                          );
+                        }
+                      }
+                    }
                   },
                 ),
               ],
@@ -156,8 +218,11 @@ class DownloadsScreenNew extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final downloadState = ref.watch(downloadManagerProvider);
-    final downloads = downloadState.downloads.reversed.toList(); // Show latest first
+    // Use select to watch only specific fields to reduce rebuilds
+    final downloads = ref.watch(downloadManagerProvider.select((state) => state.downloads)).reversed.toList();
+    final progress = ref.watch(downloadManagerProvider.select((state) => state.progress));
+    final hasStoragePermission = ref.watch(downloadManagerProvider.select((state) => state.hasStoragePermission));
+    final permissionError = ref.watch(downloadManagerProvider.select((state) => state.permissionError));
     //final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -206,45 +271,119 @@ class DownloadsScreenNew extends ConsumerWidget {
             ),
         ],
       ),
-      body: downloads.isEmpty
+      body: !hasStoragePermission && downloads.isEmpty
           ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.download_outlined,
-                    size: 80,
-                    color: Colors.grey[400],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No downloads yet',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey[600],
-                      fontWeight: FontWeight.w500,
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.folder_off,
+                      size: 80,
+                      color: Colors.grey[400],
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Downloaded files will appear here',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[500],
+                    const SizedBox(height: 24),
+                    Text(
+                      'Storage Permission Required',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[800],
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    Text(
+                      permissionError ?? 
+                      'Void needs storage permission to save downloads to your device. Please grant permission to continue.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 32),
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                        final granted = await ref.read(downloadManagerProvider.notifier).requestStoragePermission();
+                        if (!granted && context.mounted) {
+                          // Show dialog to open settings
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Permission Required'),
+                              content: const Text(
+                                'Storage permission is required to download files. Please grant permission in app settings.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('Cancel'),
+                                ),
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    openAppSettings();
+                                  },
+                                  child: const Text('Open Settings'),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.lock_open),
+                      label: const Text('Grant Permission'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: downloads.length,
-              itemBuilder: (context, index) {
-                final download = downloads[index];
-                final progress = downloadState.progress[download.id] ?? 0.0;
-                
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
+          : downloads.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.download_outlined,
+                        size: 80,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No downloads yet',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.grey[600],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Downloaded files will appear here',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[500],
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+          : RepaintBoundary(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: downloads.length,
+                itemBuilder: (context, index) {
+                  final download = downloads[index];
+                  final downloadProgress = progress[download.id] ?? 0.0;
+                  
+                  return Card(
+                    key: ValueKey('download_${download.id}_$index'),
+                    margin: const EdgeInsets.only(bottom: 12),
                   elevation: 2,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -317,7 +456,7 @@ class DownloadsScreenNew extends ConsumerWidget {
                               // Status badge
                               if (download.status == DownloadStatus.downloading)
                                 Text(
-                                  '${(progress * 100).toInt()}%',
+                                  '${(downloadProgress * 100).toInt()}%',
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
@@ -333,7 +472,7 @@ class DownloadsScreenNew extends ConsumerWidget {
                             ClipRRect(
                               borderRadius: BorderRadius.circular(4),
                               child: LinearProgressIndicator(
-                                value: progress,
+                                value: downloadProgress,
                                 minHeight: 6,
                                 backgroundColor: Colors.grey[300],
                                 valueColor: AlwaysStoppedAnimation<Color>(
@@ -387,6 +526,7 @@ class DownloadsScreenNew extends ConsumerWidget {
                 );
               },
             ),
+          ),
     );
   }
 }

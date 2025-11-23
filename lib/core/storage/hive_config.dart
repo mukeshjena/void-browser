@@ -1,6 +1,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 import '../constants/storage_constants.dart';
 import '../../features/bookmarks/data/models/bookmark_model.dart';
+import '../../features/downloads/data/models/download_model.dart';
 import 'cache_service.dart';
 
 class HiveConfig {
@@ -10,6 +11,9 @@ class HiveConfig {
     // Register adapters
     if (!Hive.isAdapterRegistered(0)) {
       Hive.registerAdapter(BookmarkModelAdapter());
+    }
+    if (!Hive.isAdapterRegistered(1)) {
+      Hive.registerAdapter(DownloadModelAdapter());
     }
     
     // Initialize cache service

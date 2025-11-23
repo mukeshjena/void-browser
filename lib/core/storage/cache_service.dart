@@ -65,7 +65,8 @@ class CacheService {
       
       // Check if expired
       if (entry.isExpired) {
-        cacheBox.delete(key);
+        // Delete asynchronously to avoid blocking
+        cacheBox.delete(key).catchError((_) {});
         return null;
       }
 
@@ -73,8 +74,8 @@ class CacheService {
       final valueJson = jsonDecode(entry.value) as Map<String, dynamic>;
       return fromJson(valueJson);
     } catch (e) {
-      // If parsing fails, remove invalid cache
-      cacheBox.delete(key);
+      // If parsing fails, remove invalid cache asynchronously
+      cacheBox.delete(key).catchError((_) {});
       return null;
     }
   }
@@ -89,7 +90,8 @@ class CacheService {
       
       // Check if expired
       if (entry.isExpired) {
-        cacheBox.delete(key);
+        // Delete asynchronously to avoid blocking
+        cacheBox.delete(key).catchError((_) {});
         return null;
       }
 
@@ -97,8 +99,8 @@ class CacheService {
       final valueJson = jsonDecode(entry.value) as List;
       return valueJson.map((item) => fromJson(item as Map<String, dynamic>)).toList();
     } catch (e) {
-      // If parsing fails, remove invalid cache
-      cacheBox.delete(key);
+      // If parsing fails, remove invalid cache asynchronously
+      cacheBox.delete(key).catchError((_) {});
       return null;
     }
   }
@@ -222,7 +224,9 @@ class CacheService {
     try {
       final keysToDelete = <String>[];
       
-      for (var key in cacheBox.keys) {
+      // Batch process keys to avoid blocking
+      final keys = cacheBox.keys.toList();
+      for (var key in keys) {
         try {
           final entryJson = cacheBox.get(key);
           if (entryJson == null) {
@@ -240,11 +244,14 @@ class CacheService {
         }
       }
 
-      for (var key in keysToDelete) {
-        await cacheBox.delete(key);
+      // Delete in batches to avoid blocking
+      if (keysToDelete.isNotEmpty) {
+        for (var key in keysToDelete) {
+          cacheBox.delete(key).catchError((_) {});
+        }
       }
     } catch (e) {
-      print('CacheService: Failed to clean expired cache: $e');
+      // Silently fail - don't block app startup
     }
   }
 
@@ -254,7 +261,9 @@ class CacheService {
       final cutoffDate = DateTime.now().subtract(Duration(days: daysOld));
       final keysToDelete = <String>[];
       
-      for (var key in cacheBox.keys) {
+      // Batch process keys
+      final keys = cacheBox.keys.toList();
+      for (var key in keys) {
         try {
           final entryJson = cacheBox.get(key);
           if (entryJson == null) {
@@ -271,11 +280,14 @@ class CacheService {
         }
       }
 
-      for (var key in keysToDelete) {
-        await cacheBox.delete(key);
+      // Delete in batches to avoid blocking
+      if (keysToDelete.isNotEmpty) {
+        for (var key in keysToDelete) {
+          cacheBox.delete(key).catchError((_) {});
+        }
       }
     } catch (e) {
-      print('CacheService: Failed to clean old cache: $e');
+      // Silently fail
     }
   }
 

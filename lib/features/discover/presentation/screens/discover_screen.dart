@@ -117,9 +117,16 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final newsState = ref.watch(newsProvider);
-    final recipesState = ref.watch(recipesProvider);
-    final imagesState = ref.watch(imagesProvider);
+    // Use select to only rebuild when specific data changes, not entire state
+    final newsArticles = ref.watch(newsProvider.select((state) => state.articles));
+    final newsIsLoading = ref.watch(newsProvider.select((state) => state.isLoading));
+    final newsIsLoadingMore = ref.watch(newsProvider.select((state) => state.isLoadingMore));
+    
+    final recipes = ref.watch(recipesProvider.select((state) => state.recipes));
+    final recipesIsLoading = ref.watch(recipesProvider.select((state) => state.isLoading));
+    
+    final images = ref.watch(imagesProvider.select((state) => state.images));
+    final imagesIsLoading = ref.watch(imagesProvider.select((state) => state.isLoading));
 
     return Scaffold(
       body: RefreshIndicator(
@@ -194,31 +201,34 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
             ),
 
             // News Horizontal Carousel - No overflow, modern design
-            if (newsState.articles.isNotEmpty)
+            if (newsArticles.isNotEmpty)
               SliverToBoxAdapter(
-                child: SizedBox(
-                  height: 220,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: newsState.articles.length > 10 ? 10 : newsState.articles.length,
-                    itemBuilder: (context, index) {
-                      return SizedBox(
-                        width: 300,
-                        child: Padding(
-                          padding: EdgeInsets.only(right: index < 9 ? 16 : 0),
-                          child: HorizontalNewsCard(
-                            article: newsState.articles[index],
+                child: RepaintBoundary(
+                  child: SizedBox(
+                    height: 220,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: newsArticles.length > 10 ? 10 : newsArticles.length,
+                      itemBuilder: (context, index) {
+                        return SizedBox(
+                          key: ValueKey('news_${newsArticles[index].id}_$index'),
+                          width: 300,
+                          child: Padding(
+                            padding: EdgeInsets.only(right: index < 9 ? 16 : 0),
+                            child: HorizontalNewsCard(
+                              article: newsArticles[index],
+                            ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
 
             // Loading more indicator for news
-            if (newsState.isLoadingMore)
+            if (newsIsLoadingMore)
               const SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.all(16.0),
@@ -229,7 +239,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
               ),
             
             // News shimmer loader for initial load
-            if (newsState.isLoading && newsState.articles.isEmpty)
+            if (newsIsLoading && newsArticles.isEmpty)
               SliverToBoxAdapter(
                 child: SizedBox(
                   height: 220,
@@ -282,7 +292,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
             ),
 
             // Recipes 2-Column Grid
-            if (recipesState.recipes.isNotEmpty)
+            if (recipes.isNotEmpty)
               SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 sliver: SliverGrid(
@@ -296,16 +306,17 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                     (context, index) {
                       if (index >= 4) return null; // Show only 4 recipes
                       return RecipeCardWidget(
-                        recipe: recipesState.recipes[index],
+                        key: ValueKey('recipe_${recipes[index].id}_$index'),
+                        recipe: recipes[index],
                       );
                     },
-                    childCount: recipesState.recipes.length > 4 ? 4 : recipesState.recipes.length,
+                    childCount: recipes.length > 4 ? 4 : recipes.length,
                   ),
                 ),
               ),
             
             // Recipes shimmer loader for initial load
-            if (recipesState.isLoading && recipesState.recipes.isEmpty)
+            if (recipesIsLoading && recipes.isEmpty)
               SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 sliver: SliverGrid(
@@ -372,7 +383,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
             ),
 
             // Images Masonry Grid
-            if (imagesState.images.isNotEmpty)
+            if (images.isNotEmpty)
               SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 sliver: SliverGrid(
@@ -386,26 +397,27 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                     (context, index) {
                       if (index >= 6) return null;
                       return SquareImageCard(
-                        image: imagesState.images[index],
+                        key: ValueKey('image_${images[index].id}_$index'),
+                        image: images[index],
                         heroPrefix: 'discover_',
                         onTap: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (context) => ImageDetailScreen(
-                                image: imagesState.images[index],
+                                image: images[index],
                               ),
                             ),
                           );
                         },
                       );
                     },
-                    childCount: imagesState.images.length > 6 ? 6 : imagesState.images.length,
+                    childCount: images.length > 6 ? 6 : images.length,
                   ),
                 ),
               ),
             
             // Images shimmer loader for initial load
-            if (imagesState.isLoading && imagesState.images.isEmpty)
+            if (imagesIsLoading && images.isEmpty)
               SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 sliver: SliverGrid(

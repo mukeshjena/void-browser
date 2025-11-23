@@ -69,8 +69,11 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final newsState = ref.watch(newsProvider);
-    final articles = newsState.articles;
+    // Use select to only watch specific fields to reduce rebuilds
+    final articles = ref.watch(newsProvider.select((state) => state.articles));
+    final isLoading = ref.watch(newsProvider.select((state) => state.isLoading));
+    final isLoadingMore = ref.watch(newsProvider.select((state) => state.isLoadingMore));
+    final error = ref.watch(newsProvider.select((state) => state.error));
 
     return Scaffold(
       body: RefreshIndicator(
@@ -124,7 +127,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
             ),
 
             // Content
-            if (newsState.isLoading && articles.isEmpty)
+            if (isLoading && articles.isEmpty)
               SliverPadding(
                 padding: const EdgeInsets.all(16),
                 sliver: SliverList(
@@ -143,7 +146,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
                   ),
                 ),
               )
-            else if (newsState.error != null && articles.isEmpty)
+            else if (error != null && articles.isEmpty)
               SliverFillRemaining(
                 child: Center(
                   child: Column(
@@ -151,7 +154,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
                     children: [
                       Icon(Icons.error_outline, size: 64, color: Colors.grey[400]),
                       const SizedBox(height: 16),
-                      Text(newsState.error!, textAlign: TextAlign.center),
+                      Text(error, textAlign: TextAlign.center),
                       const SizedBox(height: 16),
                       ElevatedButton.icon(
                         onPressed: () => ref.read(newsProvider.notifier).loadTopHeadlines(forceRefresh: true),
@@ -193,7 +196,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
               ),
 
             // Loading more indicator
-            if (newsState.isLoadingMore)
+            if (isLoadingMore)
               const SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.all(16.0),
@@ -316,20 +319,23 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
                 ),
               ),
             ),
-            SizedBox(
-              height: 200,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: itemsToShow.length,
-                itemBuilder: (context, i) {
-                  return SizedBox(
-                    width: 300,
-                    child: Padding(
-                      padding: EdgeInsets.only(right: i < itemsToShow.length - 1 ? 12 : 0),
-                      child: HorizontalNewsCard(article: itemsToShow[i]),
-                    ),
-                  );
-                },
+            RepaintBoundary(
+              child: SizedBox(
+                height: 200,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: itemsToShow.length,
+                  itemBuilder: (context, i) {
+                    return SizedBox(
+                      key: ValueKey('horizontal_news_${itemsToShow[i].id}_$i'),
+                      width: 300,
+                      child: Padding(
+                        padding: EdgeInsets.only(right: i < itemsToShow.length - 1 ? 12 : 0),
+                        child: HorizontalNewsCard(article: itemsToShow[i]),
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ],

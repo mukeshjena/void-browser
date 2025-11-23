@@ -12,6 +12,8 @@ class ChromeWebView extends ConsumerStatefulWidget {
   final bool showProgress;
   final void Function(ChromeWebViewController controller)? onWebViewCreated;
   final Function(int x, int y)? onScrollChanged; // Callback for scroll position changes
+  final Function(String url, String filename)? onDownloadRequested; // Callback for download requests
+  final Function(int activeMatch, int totalMatches)? onFindResult; // Callback for find in page results
 
   const ChromeWebView({
     super.key,
@@ -20,6 +22,8 @@ class ChromeWebView extends ConsumerStatefulWidget {
     this.showProgress = true,
     this.onWebViewCreated,
     this.onScrollChanged,
+    this.onDownloadRequested,
+    this.onFindResult,
   });
 
   @override
@@ -38,8 +42,12 @@ class ChromeWebViewController {
   final Function(bool) setDesktopMode;
   final VoidCallback enableReaderMode;
   final Function(String) findInPage;
+  final VoidCallback findNext;
+  final VoidCallback findPrevious;
+  final VoidCallback clearFind;
   final Future<String?> Function() currentUrl;
   final Future<String?> Function() currentTitle;
+  final Future<String> Function() extractArticleContent;
 
   ChromeWebViewController({
     required this.loadUrl,
@@ -52,8 +60,12 @@ class ChromeWebViewController {
     required this.setDesktopMode,
     required this.enableReaderMode,
     required this.findInPage,
+    required this.findNext,
+    required this.findPrevious,
+    required this.clearFind,
     required this.currentUrl,
     required this.currentTitle,
+    required this.extractArticleContent,
   });
 }
 
@@ -67,6 +79,8 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
   double _progress = 0.0;
   bool _canGoBack = false;
   bool _canGoForward = false;
+  bool _isDesktopMode = false; // Track desktop mode state
+  DateTime? _lastProgressUpdate; // Throttle progress updates
 
   @override
   void initState() {
@@ -88,15 +102,23 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
           setDesktopMode: _setDesktopMode,
           enableReaderMode: _enableReaderMode,
           findInPage: _findInPage,
+          findNext: _findNext,
+          findPrevious: _findPrevious,
+          clearFind: _clearFind,
           currentUrl: () async => _currentUrl,
           currentTitle: () async => _currentTitle,
+          extractArticleContent: _extractArticleContent,
         ),
       );
     });
   }
 
-  void _setDesktopMode(bool isDesktop) {
-    if (webViewController != null) {
+  void _setDesktopMode(bool isDesktop) async {
+    if (webViewController != null && mounted) {
+      setState(() {
+        _isDesktopMode = isDesktop;
+      });
+      
       final userAgent = isDesktop
           ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
           : 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36';
@@ -104,12 +126,83 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
       webViewController!.setSettings(
         settings: InAppWebViewSettings(
           userAgent: userAgent,
-          useWideViewPort: isDesktop,
-          loadWithOverviewMode: isDesktop,
+          useWideViewPort: true, // Always use wide viewport for proper scaling
+          loadWithOverviewMode: !isDesktop, // Overview mode for mobile, normal for desktop
+          supportZoom: true, // Always enable zoom
+          // Android specific settings for desktop mode
+          mediaPlaybackRequiresUserGesture: false,
+          // iOS specific settings
+          allowsInlineMediaPlayback: true,
         ),
       );
+      
+      // Inject viewport meta tag for proper desktop/mobile rendering
+      final widthValue = isDesktop ? 'width=1024' : 'width=device-width';
+      await webViewController!.evaluateJavascript(source: '''
+        (function() {
+          var viewport = document.querySelector('meta[name="viewport"]');
+          var viewportContent = '$widthValue, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, minimum-scale=0.5';
+          if (viewport) {
+            viewport.setAttribute('content', viewportContent);
+          } else {
+            var meta = document.createElement('meta');
+            meta.name = 'viewport';
+            meta.content = viewportContent;
+            var head = document.getElementsByTagName('head')[0];
+            if (head) {
+              head.appendChild(meta);
+            }
+          }
+        })();
+      ''');
+      
       webViewController!.reload();
     }
+  }
+
+  Future<String> _extractArticleContent() async {
+    if (webViewController != null) {
+      // Get page HTML and extract readable content
+      final result = await webViewController!.evaluateJavascript(source: '''
+        (function() {
+          try {
+            // Try to find article content
+            var article = document.querySelector('article') || 
+                         document.querySelector('[role="article"]') ||
+                         document.querySelector('main') ||
+                         document.querySelector('.article') ||
+                         document.querySelector('.post') ||
+                         document.querySelector('.content') ||
+                         document.querySelector('#content') ||
+                         document.body;
+            
+            // Remove script and style elements
+            var scripts = article.querySelectorAll('script, style, nav, header, footer, aside, .ad, .advertisement, .sidebar');
+            scripts.forEach(function(el) { el.remove(); });
+            
+            // Get text content
+            var text = article.innerText || article.textContent || '';
+            
+            // Clean up whitespace
+            text = text.replace(/\\s+/g, ' ').trim();
+            
+            return text;
+          } catch(e) {
+            return document.body ? document.body.innerText : '';
+          }
+        })()
+      ''');
+      
+      if (result != null) {
+        final content = result.toString();
+        // Remove quotes if JavaScript returned a string
+        if (content.startsWith('"') && content.endsWith('"')) {
+          return content.substring(1, content.length - 1);
+        }
+        return content;
+      }
+    }
+    return '';
   }
 
   void _enableReaderMode() async {
@@ -160,9 +253,51 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
     }
   }
 
+  String? _currentFindText;
+  Function(int, int)? _onFindResult;
+
   void _findInPage(String text) {
     if (webViewController != null && text.isNotEmpty) {
+      _currentFindText = text;
       webViewController!.findAllAsync(find: text);
+    } else if (text.isEmpty) {
+      _clearFind();
+    }
+  }
+
+  void _findNext() async {
+    if (webViewController != null && _currentFindText != null && _currentFindText!.isNotEmpty) {
+      // Always ensure search is active before navigating
+      // Call findAllAsync to ensure search is active, then navigate
+      webViewController!.findAllAsync(find: _currentFindText!);
+      // Wait for search to initialize - longer delay for reliability
+      await Future.delayed(const Duration(milliseconds: 300));
+      // Now navigate to next match
+      if (webViewController != null && _currentFindText != null) {
+        webViewController!.findNext(forward: true);
+      }
+    }
+  }
+
+  void _findPrevious() async {
+    if (webViewController != null && _currentFindText != null && _currentFindText!.isNotEmpty) {
+      // Always ensure search is active before navigating
+      // Call findAllAsync to ensure search is active, then navigate
+      webViewController!.findAllAsync(find: _currentFindText!);
+      // Wait for search to initialize - longer delay for reliability
+      await Future.delayed(const Duration(milliseconds: 300));
+      // Now navigate to previous match
+      if (webViewController != null && _currentFindText != null) {
+        webViewController!.findNext(forward: false);
+      }
+    }
+  }
+
+  void _clearFind() {
+    if (webViewController != null) {
+      _currentFindText = null;
+      webViewController!.clearMatches();
+      _onFindResult?.call(0, 0);
     }
   }
 
@@ -212,7 +347,9 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
   Future<void> _updateNavigationState() async {
     _canGoBack = await webViewController?.canGoBack() ?? false;
     _canGoForward = await webViewController?.canGoForward() ?? false;
-    setState(() {});
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _showChromeMenu() {
@@ -351,42 +488,113 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
               javaScriptEnabled: true,
               domStorageEnabled: true,
               databaseEnabled: true,
-              supportZoom: true,
-              builtInZoomControls: false,
-              displayZoomControls: false,
+              supportZoom: true, // Enable pinch-to-zoom
+              builtInZoomControls: false, // Hide built-in zoom controls (use pinch-to-zoom)
+              displayZoomControls: false, // Hide zoom controls UI
+              useWideViewPort: true, // Enable wide viewport for proper mobile scaling
+              loadWithOverviewMode: true, // Load with overview mode for better initial scaling
               useHybridComposition: true,
               verticalScrollBarEnabled: true,
               horizontalScrollBarEnabled: true,
+              // Android specific zoom settings
+              mediaPlaybackRequiresUserGesture: false,
+              // iOS specific settings
+              allowsInlineMediaPlayback: true,
+              // Ensure proper viewport meta tag handling
+              javaScriptCanOpenWindowsAutomatically: false,
             ),
             onWebViewCreated: (controller) {
               webViewController = controller;
+              // Initialize desktop mode state from saved preference
+              // This will be applied when the page loads
             },
             onLoadStart: (controller, url) {
-              setState(() {
-                _isLoading = true;
-                _currentUrl = url.toString();
-              });
+              if (mounted) {
+                setState(() {
+                  _isLoading = true;
+                  _currentUrl = url.toString();
+                });
+              }
               widget.onUrlChanged?.call(url.toString());
               _updateNavigationState();
             },
             onLoadStop: (controller, url) async {
-              setState(() {
-                _isLoading = false;
-                _currentUrl = url.toString();
-              });
+              if (mounted) {
+                setState(() {
+                  _isLoading = false;
+                  _currentUrl = url.toString();
+                });
+              }
               pullToRefreshController?.endRefreshing();
               _currentTitle = await controller.getTitle() ?? '';
               _updateNavigationState();
               widget.onUrlChanged?.call(url.toString());
+              
+              // Ensure viewport meta tag allows zooming and respects desktop mode
+              try {
+                final isDesktop = _isDesktopMode;
+                final widthValue = isDesktop ? 'width=1024' : 'width=device-width';
+                final isDesktopStr = isDesktop.toString();
+                await controller.evaluateJavascript(source: '''
+                  (function() {
+                    var viewport = document.querySelector('meta[name="viewport"]');
+                    var viewportContent = '$widthValue, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, minimum-scale=0.5';
+                    var isDesktop = $isDesktopStr;
+                    
+                    if (viewport) {
+                      var content = viewport.getAttribute('content') || '';
+                      // Ensure user-scalable is yes for zooming
+                      if (content.includes('user-scalable=no')) {
+                        viewport.setAttribute('content', content.replace('user-scalable=no', 'user-scalable=yes'));
+                      }
+                      // Ensure max scale allows zooming
+                      if (!content.includes('maximum-scale')) {
+                        viewport.setAttribute('content', content + ', maximum-scale=5.0');
+                      }
+                      // Ensure min scale allows zooming out
+                      if (!content.includes('minimum-scale')) {
+                        viewport.setAttribute('content', content + ', minimum-scale=0.5');
+                      }
+                      // Update width based on desktop mode if not already set correctly
+                      if (isDesktop && !content.includes('width=1024')) {
+                        viewport.setAttribute('content', viewportContent);
+                      } else if (!isDesktop && !content.includes('width=device-width')) {
+                        viewport.setAttribute('content', viewportContent);
+                      }
+                    } else {
+                      // Add viewport meta tag if it doesn't exist
+                      var meta = document.createElement('meta');
+                      meta.name = 'viewport';
+                      meta.content = viewportContent;
+                      var head = document.getElementsByTagName('head')[0];
+                      if (head) {
+                        head.appendChild(meta);
+                      }
+                    }
+                  })();
+                ''');
+              } catch (e) {
+                // Ignore errors if JavaScript execution fails
+              }
             },
             onProgressChanged: (controller, progress) {
               if (progress == 100) {
                 pullToRefreshController?.endRefreshing();
               }
-              setState(() {
-                _progress = progress / 100;
-                _isLoading = progress < 100;
-              });
+              
+              // Throttle progress updates to reduce rebuilds (update max every 150ms)
+              final now = DateTime.now();
+              if (_lastProgressUpdate == null || 
+                  now.difference(_lastProgressUpdate!).inMilliseconds > 150 ||
+                  progress == 100) {
+                _lastProgressUpdate = now;
+                if (mounted) {
+                  setState(() {
+                    _progress = progress / 100;
+                    _isLoading = progress < 100;
+                  });
+                }
+              }
             },
             onUpdateVisitedHistory: (controller, url, androidIsReload) {
               _updateNavigationState();
@@ -394,6 +602,50 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
             onScrollChanged: (controller, x, y) {
               // Notify parent about scroll position changes
               widget.onScrollChanged?.call(x, y);
+            },
+            onFindResultReceived: (controller, activeMatchOrdinal, numberOfMatches, isDoneCounting) {
+              // Update find results when matches are found
+              // Always update the callback to ensure count is shown
+              // activeMatchOrdinal is 1-indexed (0 means no active match)
+              // Update whenever we have results or when counting is done
+              if (isDoneCounting) {
+                // When counting is done, use the actual values
+                final activeMatch = activeMatchOrdinal > 0 ? activeMatchOrdinal : (numberOfMatches > 0 ? 1 : 0);
+                _onFindResult?.call(activeMatch, numberOfMatches);
+              } else if (numberOfMatches > 0) {
+                // While counting, still update if we have matches found so far
+                final activeMatch = activeMatchOrdinal > 0 ? activeMatchOrdinal : 1;
+                _onFindResult?.call(activeMatch, numberOfMatches);
+              } else if (numberOfMatches == 0 && isDoneCounting) {
+                // No matches found
+                _onFindResult?.call(0, 0);
+              }
+            },
+            onDownloadStartRequest: (controller, downloadStartRequest) async {
+              // Handle download requests from WebView
+              final url = downloadStartRequest.url.toString();
+              final suggestedFilename = downloadStartRequest.suggestedFilename ?? 
+                  url.split('/').last.split('?').first;
+              
+              // Extract filename from URL if not provided
+              String filename = suggestedFilename;
+              if (filename.isEmpty || !filename.contains('.')) {
+                final uri = Uri.parse(url);
+                final pathSegments = uri.pathSegments;
+                if (pathSegments.isNotEmpty) {
+                  filename = pathSegments.last;
+                } else {
+                  // Generate default filename
+                  final extension = url.split('.').last.split('?').first;
+                  filename = 'download_${DateTime.now().millisecondsSinceEpoch}.$extension';
+                }
+              }
+              
+              // Notify parent about download request
+              widget.onDownloadRequested?.call(url, filename);
+              
+              // Cancel the default download handler - return true to cancel, false to allow default
+              // We return true to cancel because we're handling it ourselves
             },
           ),
         ),

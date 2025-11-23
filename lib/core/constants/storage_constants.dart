@@ -23,6 +23,7 @@ class StorageConstants {
   static const String keyLocationPermission = 'location_permission';
   static const String keyLastLatitude = 'last_latitude';
   static const String keyLastLongitude = 'last_longitude';
+  static const String keyDesktopMode = 'desktop_mode';
   
   // Cache keys
   static const String keyNewsCache = 'news_cache';
