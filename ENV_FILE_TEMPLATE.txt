@@ -1,0 +1,10 @@
+# Copy this content to a new file named .env in void_browser/ directory
+
+# NEWS API - Required for News Feature
+NEWS_API_KEY=
+
+# UNSPLASH API - Required for Images Feature
+UNSPLASH_ACCESS_KEY=
+
+# NOTE: TheMealDB and Open-Meteo are completely FREE and don't require API keys!
+
