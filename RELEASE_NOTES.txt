@@ -1,0 +1,13 @@
+<en-US>
+Initial release of Void Browser - Ultra-lightweight, privacy-focused browser for Android.
+
+Key features:
+• Full web browsing with multi-tab support
+• Built-in ad-blocking
+• Discovery panel (news, recipes, weather, images)
+• Reader mode
+• Bookmarks and downloads
+• Dark mode support
+
+Privacy-first: No tracking, all data stays on your device.
+</en-US>

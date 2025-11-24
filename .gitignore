@@ -56,6 +56,16 @@ local.properties
 android/key.properties
 android/app/key.properties
 
+# Keystore passwords and sensitive documentation
+KEYSTORE_PASSWORDS.md
+**/KEYSTORE_PASSWORDS.md
+
 # Hive database
 *.hive
 *.lock
+
+# Sensitive build files
+*.aab
+*.apk
+!**/build/**/*.aab
+!**/build/**/*.apk

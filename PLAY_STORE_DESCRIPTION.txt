@@ -1,0 +1,79 @@
+🌐 Void Browser - Ultra-Lightweight Privacy Browser
+
+Experience the web like never before with Void Browser, an ultra-lightweight, privacy-focused mobile browser designed for Android. Built with performance and privacy in mind, Void Browser combines a clean, modern interface with powerful features that make browsing fast, secure, and enjoyable.
+
+✨ KEY FEATURES
+
+🔹 Full Web Browsing Experience
+Complete WebView-based browser with full JavaScript support. Browse any website with smooth performance. Enjoy unlimited tabs with an intuitive tab switcher for managing multiple browsing sessions.
+
+🔹 Built-in Ad-Blocking
+Protect your privacy with built-in ad-blocking powered by EasyList filters. Block intrusive advertisements, tracking scripts, and malicious content automatically. Ad-blocking is enabled by default.
+
+🔹 Modern Interface
+Inspired by Chrome and Brave, Void Browser features a clean, modern design. Chrome-style search bar with secure/insecure connection indicators. Auto-hiding AppBar maximizes viewing area.
+
+🔹 Discovery Panel
+Explore beyond browsing with our integrated discovery panel:
+• News Feed: Top headlines and trending news
+• Recipes: Discover delicious recipes from TheMealDB
+• Weather: GPS-based weather forecasts
+• Images: Browse beautiful images from Unsplash
+
+🔹 Reader Mode
+Distraction-free reading by stripping away ads, sidebars, and clutter. Perfect for articles and long-form content.
+
+🔹 Bookmarks & Downloads
+Save and organize favorite websites. Built-in download manager tracks progress and manages downloads efficiently.
+
+🔹 Dark Mode & Customization
+Automatic light/dark mode following system preferences. Multiple search engine options (Google, Bing, DuckDuckGo) and privacy settings.
+
+🔹 Performance Optimized
+Optimized for low-end devices. Runs smoothly on devices with as little as 1GB RAM. Fast startup and efficient memory management.
+
+🔒 PRIVACY & SECURITY
+
+Your privacy matters:
+
+• No Tracking: We don't collect, store, or transmit any personal information
+• Local Storage Only: All data (bookmarks, history, downloads) stays on your device
+• Ad-Blocking: Block tracking scripts and advertisements automatically
+• Secure Connections: Visual indicators for secure (HTTPS) websites
+• Privacy Settings: Configure ad-blocking, Do Not Track, and more
+
+⚡ PERFORMANCE
+
+• Ultra-Lightweight: ~16-19MB per architecture
+• Fast & Responsive: Quick page loads and smooth scrolling
+• Low Resource Usage: Efficient memory and battery consumption
+• Offline Support: Intelligent caching for better performance
+• State Persistence: Tabs and sessions persist across restarts
+
+🎯 PERFECT FOR
+
+✓ Privacy-conscious users who want to avoid tracking
+✓ Users with budget or low-end Android devices
+✓ Anyone looking for a lightweight, fast browser
+✓ Users who want built-in ad-blocking
+✓ Those who appreciate clean, modern interfaces
+
+📱 REQUIREMENTS
+
+• Android 5.0 (Lollipop) or higher
+• Minimum 1GB RAM recommended
+• Internet connection for web browsing
+
+💡 TIPS
+
+• Swipe left/right to navigate back/forward
+• Pull down to refresh pages
+• Use tab switcher to manage multiple tabs
+• Enable reader mode for distraction-free reading
+• Customize search engine in settings
+
+⭐ WHY VOID BROWSER?
+
+In a world where privacy matters, Void Browser offers an alternative to bloated browsers that track your every move. We believe your browsing data belongs to you and should stay on your device. Combined with powerful features, beautiful interface, and excellent performance, Void Browser is perfect for privacy-conscious users who don't want to compromise on functionality.
+
+Download Void Browser today. Fast, private, and lightweight - everything a modern browser should be.

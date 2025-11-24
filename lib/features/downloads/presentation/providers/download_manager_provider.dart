@@ -148,8 +148,20 @@ class DownloadManagerNotifier extends StateNotifier<DownloadManagerState> {
           }
         } else {
           // Android <13 - check storage permission
-          final storage = await Permission.storage.status;
-          hasPermission = storage.isGranted;
+          // Note: We use Permission.storage which is the old storage permission
+          // This does NOT request media permissions (photos/videos)
+          try {
+            final storage = await Permission.storage.status;
+            hasPermission = storage.isGranted;
+          } catch (e) {
+            // If permission check fails, assume we can access app directory
+            try {
+              final dir = await getExternalStorageDirectory();
+              hasPermission = dir != null;
+            } catch (e2) {
+              hasPermission = false;
+            }
+          }
         }
         
         state = state.copyWith(hasStoragePermission: hasPermission);
@@ -221,9 +233,20 @@ class DownloadManagerNotifier extends StateNotifier<DownloadManagerState> {
           }
         } else {
           // Android <13 - request storage permission
-          // This will show the system permission dialog automatically (like location permission)
-          final storageStatus = await Permission.storage.request();
-          granted = storageStatus.isGranted;
+          // Note: Permission.storage is the old storage permission (not media permissions)
+          // This does NOT request READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, or READ_MEDIA_AUDIO
+          try {
+            final storageStatus = await Permission.storage.request();
+            granted = storageStatus.isGranted;
+          } catch (e) {
+            // If permission request fails, try to access app directory directly
+            try {
+              final dir = await getExternalStorageDirectory();
+              granted = dir != null;
+            } catch (e2) {
+              granted = false;
+            }
+          }
         }
         
         state = state.copyWith(
