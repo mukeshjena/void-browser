@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_dimensions.dart';
 import '../providers/bookmarks_provider.dart';
 import '../widgets/bookmark_item_widget.dart';
+import '../../../browser/presentation/utils/tab_utils.dart';
 
 class BookmarksScreen extends ConsumerStatefulWidget {
   const BookmarksScreen({super.key});
@@ -110,7 +111,9 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                           bookmark: bookmark,
                           onTap: () {
                             // Navigate to URL in browser
-                            Navigator.pop(context, bookmark.url);
+                            Navigator.pop(context);
+                            // Open bookmark URL in current tab
+                            TabUtils.openInCurrentTab(ref, bookmark.url);
                           },
                           onDelete: () async {
                             await ref

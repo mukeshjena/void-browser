@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'core/storage/hive_config.dart';
 import 'core/storage/cache_manager.dart';
+import 'core/services/notification_service.dart';
 import 'app.dart';
 
 void main() async {
@@ -23,6 +24,9 @@ void main() async {
   
   // Initialize cache manager (cleans old cache on startup)
   await CacheManager.init();
+
+  // Initialize notification service
+  await NotificationService().initialize();
 
   // Get SharedPreferences instance
   final prefs = await SharedPreferences.getInstance();

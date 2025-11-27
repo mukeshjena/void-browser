@@ -69,3 +69,25 @@ KEYSTORE_PASSWORDS.md
 *.apk
 !**/build/**/*.aab
 !**/build/**/*.apk
+
+# Additional sensitive files
+PLAY_STORE_DESCRIPTION.txt
+RELEASE_NOTES.txt
+*.log
+*.tmp
+
+# Generated files
+*.g.dart
+*.freezed.dart
+*.config.dart
+
+# IDE specific
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# OS specific
+.DS_Store
+Thumbs.db

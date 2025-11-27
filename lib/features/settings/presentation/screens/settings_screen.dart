@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/services/biometric_service.dart';
 import '../providers/settings_provider.dart';
 import '../../domain/entities/app_settings_entity.dart';
 import '../../../adblock/presentation/providers/adblock_provider.dart';
@@ -45,6 +46,22 @@ class SettingsScreen extends ConsumerWidget {
                           color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
                         ),
           _buildSection(context, 'Privacy & Security'),
+          SwitchListTile(
+            title: const Text('Fingerprint Lock'),
+            subtitle: const Text('Lock app with fingerprint or face recognition'),
+            value: settings.fingerprintLockEnabled,
+            onChanged: (value) async {
+              if (value) {
+                // Check if biometric is available before enabling
+                final biometricService = await _checkBiometricAvailability(context);
+                if (biometricService != null) {
+                  settingsNotifier.setFingerprintLockEnabled(true);
+                }
+              } else {
+                settingsNotifier.setFingerprintLockEnabled(false);
+              }
+            },
+          ),
           SwitchListTile(
             title: const Text('JavaScript'),
             subtitle: const Text('Enable JavaScript on web pages'),
@@ -382,6 +399,25 @@ class SettingsScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<BiometricService?> _checkBiometricAvailability(BuildContext context) async {
+    final biometricService = BiometricService();
+    final isAvailable = await biometricService.isAvailable();
+    
+    if (!isAvailable) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Biometric authentication is not available on this device'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return null;
+    }
+    
+    return biometricService;
   }
 }
 

@@ -786,29 +786,59 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
       
       // Check if tab URL was updated externally (e.g., from TabUtils)
       // This handles the case where URL changes from "discover" to a real URL
+      // OR when URL changes from one real URL to another (e.g., clicking news after browsing)
       if (activeTab.url != 'discover' && 
-          activeTab.url != _currentUrls[tabId] && 
-          _isLoadingUrl[tabId] != true &&
-          _lastLoadedUrl[tabId] != activeTab.url &&
-          _isInternalLoad[tabId] != true) { // Only if NOT an internal load
-        // Check debounce
-        final lastLoadTime = _lastLoadTime[tabId];
-        final shouldLoad = lastLoadTime == null || 
-            DateTime.now().difference(lastLoadTime).inMilliseconds >= _debounceMs;
-        
-        if (shouldLoad && mounted) {
-          // URL was updated externally, update current URL and load it
-          setState(() {
-            _currentUrls[tabId] = activeTab.url;
-            if (_urlControllers[tabId] != null) {
-              _urlControllers[tabId]!.text = activeTab.url;
-            }
-          });
+          activeTab.url != _currentUrls[tabId]) {
+        // For external updates (from TabUtils), always load regardless of loading state
+        // This ensures news items load even when webview already has a different URL
+        if (mounted) {
+          // Clear all loading flags and debounce to force immediate load
+          _isLoadingUrl[tabId] = false;
+          _lastLoadedUrl[tabId] = ''; // Clear to allow immediate load
+          _lastLoadTime.remove(tabId); // Clear debounce
+          _isInternalLoad[tabId] = false; // Mark as external load
           
           // Load URL in WebView if it exists, otherwise it will be loaded when WebView is created
           if (_webViewControllers[tabId] != null) {
-            _isInternalLoad[tabId] = false; // Mark as external
-            _loadUrl(tabId, activeTab.url, ref);
+            // Format URL properly
+            String formattedUrl = activeTab.url;
+            if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+              if (formattedUrl.contains('.') && !formattedUrl.contains(' ')) {
+                formattedUrl = 'https://$formattedUrl';
+              }
+            }
+            
+            // Load directly in webview (bypass _loadUrl checks)
+            _webViewControllers[tabId]!.loadUrl(formattedUrl);
+            
+            // Update state after loading
+            setState(() {
+              _currentUrls[tabId] = formattedUrl;
+              if (_urlControllers[tabId] != null) {
+                _urlControllers[tabId]!.text = formattedUrl;
+              }
+              _isLoadingUrl[tabId] = true; // Mark as loading
+              _lastLoadedUrl[tabId] = formattedUrl;
+              _lastLoadTime[tabId] = DateTime.now();
+            });
+            
+            // Reset loading flag after a delay
+            Future.delayed(const Duration(milliseconds: 500), () {
+              if (mounted) {
+                setState(() {
+                  _isLoadingUrl[tabId] = false;
+                });
+              }
+            });
+          } else {
+            // Webview doesn't exist yet, just update the URL state
+            // It will be loaded when webview is created
+            setState(() {
+              _currentUrls[tabId] = activeTab.url;
+              if (_urlControllers[tabId] != null) {
+                _urlControllers[tabId]!.text = activeTab.url;
+              }
+            });
           }
         }
       } else if (_isInternalLoad[tabId] == true) {
@@ -870,9 +900,23 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
           _goBackToDiscover(tabId, ref);
         }
       },
-      child: Scaffold(
-        body: Column(
-        children: [
+      child: GestureDetector(
+        onTap: () {
+          // Unfocus search bar when tapping outside
+          final activeTab = ref.read(tabsProvider).activeTab;
+          if (activeTab != null) {
+            final tabId = activeTab.id;
+            if (_urlControllers.containsKey(tabId)) {
+              _urlControllers[tabId]!.selection = TextSelection.fromPosition(
+                TextPosition(offset: _urlControllers[tabId]!.text.length),
+              );
+              FocusScope.of(context).unfocus();
+            }
+          }
+        },
+        child: Scaffold(
+          body: Column(
+          children: [
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeInOut,
@@ -882,6 +926,7 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
               opacity: (isDiscover || (_isAppBarVisible[tabId] ?? true)) ? 1.0 : 0.0,
               child: AppBar(
                 automaticallyImplyLeading: false,
+                titleSpacing: 8,
                 title: ChromeSearchBar(
                   controller: _urlControllers[tabId]!,
                   currentUrl: isDiscover ? null : _currentUrls[tabId],
@@ -890,70 +935,74 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
                   showMenu: false,
                 ),
                 actions: [
-                  // New Tab button
-                  IconButton(
-                    icon: const Icon(Icons.add),
-                    onPressed: () {
-                      ref.read(tabsProvider.notifier).createNewTab();
-                      // Clear the controller for the new tab when it becomes active
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        final newActiveTab = ref.read(tabsProvider).activeTab;
-                        if (newActiveTab != null && newActiveTab.url == 'discover') {
-                          final newTabId = newActiveTab.id;
-                          if (!_urlControllers.containsKey(newTabId)) {
-                            _urlControllers[newTabId] = TextEditingController(text: '');
-                          } else {
-                            _urlControllers[newTabId]!.text = '';
-                          }
-                          _currentUrls[newTabId] = 'discover';
-                        }
-                      });
-                    },
-                    tooltip: 'New Tab',
-                  ),
-                  // Tab count indicator
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const TabSwitcherScreen()),
-                      );
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isDark ? Colors.grey[800] : Colors.grey[200],
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.tab,
-                            size: 18,
-                            color: isDark ? Colors.white : Colors.black87,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                          // New Tab button
+                          IconButton(
+                            icon: const Icon(Icons.add),
+                            onPressed: () {
+                              ref.read(tabsProvider.notifier).createNewTab();
+                              // Clear the controller for the new tab when it becomes active
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                final newActiveTab = ref.read(tabsProvider).activeTab;
+                                if (newActiveTab != null && newActiveTab.url == 'discover') {
+                                  final newTabId = newActiveTab.id;
+                                  if (!_urlControllers.containsKey(newTabId)) {
+                                    _urlControllers[newTabId] = TextEditingController(text: '');
+                                  } else {
+                                    _urlControllers[newTabId]!.text = '';
+                                  }
+                                  _currentUrls[newTabId] = 'discover';
+                                }
+                              });
+                            },
+                            tooltip: 'New Tab',
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '$tabCount',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: isDark ? Colors.white : Colors.black87,
+                          // Tab count indicator
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const TabSwitcherScreen()),
+                              );
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(right: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: isDark ? Colors.grey[800] : Colors.grey[200],
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.tab,
+                                    size: 18,
+                                    color: isDark ? Colors.white : Colors.black87,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '$tabCount',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark ? Colors.white : Colors.black87,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.more_vert),
+                            onPressed: () => _showChromeMenu(tabId),
+                            tooltip: 'Menu',
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.more_vert),
-                    onPressed: () => _showChromeMenu(tabId),
-                    tooltip: 'Menu',
-                  ),
                 ],
-                titleSpacing: 8,
                 backgroundColor: isDark ? Colors.black : Colors.white,
                 elevation: 0,
               ),
@@ -1029,20 +1078,35 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
                             if (_urlControllers[tabId] != null) {
                               _urlControllers[tabId]!.text = urlToLoad;
                             }
+                            // Clear loading flags to allow immediate load
+                            _isLoadingUrl[tabId] = false;
+                            _lastLoadedUrl[tabId] = '';
+                            _lastLoadTime.remove(tabId);
                           });
                         }
                         
-                        // Small delay to ensure WebView is ready
-                        Future.delayed(const Duration(milliseconds: 100), () {
+                        // Load URL immediately when WebView is created
+                        // Use a small delay to ensure WebView is fully initialized
+                        Future.delayed(const Duration(milliseconds: 150), () {
                           if (mounted && _webViewControllers[tabId] != null) {
-                            controller.loadUrl(urlToLoad);
-                            // Apply saved desktop mode preference after loading
-                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                              final desktopMode = ref.read(desktopModeProvider);
-                              if (desktopMode) {
-                                controller.setDesktopMode(desktopMode);
-                              }
-                            });
+                            // Ensure we're loading the most current URL
+                            final currentTabUrl = ref.read(tabsProvider).activeTab?.url ?? urlToLoad;
+                            if (currentTabUrl != 'discover' && currentTabUrl.isNotEmpty) {
+                              controller.loadUrl(currentTabUrl);
+                              // Update state to reflect the load
+                              setState(() {
+                                _currentUrls[tabId] = currentTabUrl;
+                                _lastLoadedUrl[tabId] = currentTabUrl;
+                                _lastLoadTime[tabId] = DateTime.now();
+                              });
+                              // Apply saved desktop mode preference after loading
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                final desktopMode = ref.read(desktopModeProvider);
+                                if (desktopMode) {
+                                  controller.setDesktopMode(desktopMode);
+                                }
+                              });
+                            }
                           }
                         });
                       } else {
@@ -1111,6 +1175,7 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
           ),
         ],
       ),
+        ),
       ),
     );
   }

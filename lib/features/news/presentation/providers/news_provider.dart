@@ -122,13 +122,13 @@ class NewsNotifier extends StateNotifier<NewsState> {
     try {
       final articles = await remoteDataSource.getTopHeadlines(category: category);
       
-      // Save to cache
-      await CacheService.setList(
+      // Save to cache (non-blocking)
+      CacheService.setList(
         cacheKey,
         articles,
         ApiConstants.newsCacheTtl,
         toJson: (article) => NewsArticleModel.fromEntity(article).toJson(),
-      );
+      ).catchError((_) {});
 
       state = state.copyWith(
         articles: articles,

@@ -42,6 +42,7 @@ class SettingsNotifier extends StateNotifier<AppSettingsEntity> {
       downloadPath: _prefs.getString(StorageConstants.keyDownloadPath) ?? '',
       cacheSize: _prefs.getInt(StorageConstants.keyCacheSize) ??
           StorageConstants.defaultCacheSize,
+      fingerprintLockEnabled: _prefs.getBool(StorageConstants.keyFingerprintLockEnabled) ?? false,
     );
   }
 
@@ -93,6 +94,11 @@ class SettingsNotifier extends StateNotifier<AppSettingsEntity> {
   Future<void> setCacheSize(int size) async {
     await _prefs.setInt(StorageConstants.keyCacheSize, size);
     state = state.copyWith(cacheSize: size);
+  }
+
+  Future<void> setFingerprintLockEnabled(bool enabled) async {
+    await _prefs.setBool(StorageConstants.keyFingerprintLockEnabled, enabled);
+    state = state.copyWith(fingerprintLockEnabled: enabled);
   }
 
   Future<void> resetSettings() async {

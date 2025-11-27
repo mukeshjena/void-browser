@@ -24,6 +24,7 @@ class StorageConstants {
   static const String keyLastLatitude = 'last_latitude';
   static const String keyLastLongitude = 'last_longitude';
   static const String keyDesktopMode = 'desktop_mode';
+  static const String keyFingerprintLockEnabled = 'fingerprint_lock_enabled';
   
   // Cache keys
   static const String keyNewsCache = 'news_cache';
@@ -32,6 +33,8 @@ class StorageConstants {
   static const String keyImagesCache = 'images_cache';
   static const String keyFilterRules = 'filter_rules';
   static const String keyLastFilterUpdate = 'last_filter_update';
+  static const String keySearchSuggestionsCache = 'search_suggestions_cache';
+  static const String keyQRCodeHistory = 'qr_code_history';
   
   // Default values
   static const String defaultSearchEngine = 'google';

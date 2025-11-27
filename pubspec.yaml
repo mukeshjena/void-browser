@@ -51,6 +51,10 @@ dependencies:
   share_plus: ^7.2.0
   open_filex: ^4.3.3
   shimmer: ^3.0.0
+  flutter_local_notifications: ^17.0.0
+  local_auth: ^2.3.0
+  mobile_scanner: ^5.2.3
+  speech_to_text: ^7.0.0
   
   # HTTP Parser for reader mode
   html: ^0.15.4

@@ -614,15 +614,16 @@ class _BrowserScreenFullPageState extends ConsumerState<BrowserScreenFullPage> {
               opacity: (_currentUrl == 'discover' || _currentUrl.isEmpty || _isAppBarVisible) ? 1.0 : 0.0,
               child: AppBar(
                 automaticallyImplyLeading: false, // Remove back button
-        title: ChromeSearchBar(
-          controller: _urlController,
-          currentUrl: _currentUrl, // Pass current URL for security icon
-          onSubmitted: (value) => _loadUrl(value, ref),
-          onChanged: (value) {
-            // Update URL text as user types
-          },
-          showMenu: false, // Menu is now separate
-        ),
+                titleSpacing: 8,
+                title: ChromeSearchBar(
+                  controller: _urlController,
+                  currentUrl: _currentUrl, // Pass current URL for security icon
+                  onSubmitted: (value) => _loadUrl(value, ref),
+                  onChanged: (value) {
+                    // Update URL text as user types
+                  },
+                  showMenu: false, // Menu is now separate
+                ),
                 actions: [
                   IconButton(
                     icon: const Icon(Icons.more_vert),
@@ -630,14 +631,21 @@ class _BrowserScreenFullPageState extends ConsumerState<BrowserScreenFullPage> {
                     tooltip: 'Menu',
                   ),
                 ],
-                titleSpacing: 8,
               ),
             ),
           ),
           
           // WebView
           Expanded(
-            child: ChromeWebView(
+            child: GestureDetector(
+              onTap: () {
+                // Unfocus search bar when tapping on webview
+                _urlController.selection = TextSelection.fromPosition(
+                  TextPosition(offset: _urlController.text.length),
+                );
+                FocusScope.of(context).unfocus();
+              },
+              child: ChromeWebView(
               initialUrl: widget.initialUrl ?? 'https://www.google.com',
               onDownloadRequested: (url, filename) async {
                 // Handle download request from WebView
@@ -717,6 +725,7 @@ class _BrowserScreenFullPageState extends ConsumerState<BrowserScreenFullPage> {
                 _currentTitle = await _webViewController?.currentTitle() ?? '';
               },
               onScrollChanged: _handleScroll, // Track scroll position
+              ),
             ),
           ),
         ],

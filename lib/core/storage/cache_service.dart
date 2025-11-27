@@ -105,13 +105,14 @@ class CacheService {
     }
   }
 
-  /// Save data to cache
+  /// Save data to cache (non-blocking)
   static Future<void> set<T>(
     String key,
     T data,
     int ttlMinutes, {
     Map<String, dynamic> Function(T)? toJson,
   }) async {
+    // Run in isolate to avoid blocking UI
     try {
       String jsonString;
       
@@ -130,10 +131,12 @@ class CacheService {
         ttlMinutes: ttlMinutes,
       );
 
-      await cacheBox.put(key, entry.toJson());
+      // Use unawaited to make it non-blocking
+      cacheBox.put(key, entry.toJson()).catchError((_) {
+        // Silently fail cache write
+      });
     } catch (e) {
       // Silently fail cache write
-      //print('CacheService: Failed to cache $key: $e');
     }
   }
 

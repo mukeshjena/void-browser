@@ -12,6 +12,7 @@ class AppSettingsEntity {
   final bool showImages;
   final String downloadPath;
   final int cacheSize;
+  final bool fingerprintLockEnabled;
 
   AppSettingsEntity({
     required this.themeMode,
@@ -25,6 +26,7 @@ class AppSettingsEntity {
     required this.showImages,
     required this.downloadPath,
     required this.cacheSize,
+    required this.fingerprintLockEnabled,
   });
 
   factory AppSettingsEntity.defaultSettings() {
@@ -40,6 +42,7 @@ class AppSettingsEntity {
       showImages: true,
       downloadPath: '',
       cacheSize: 100,
+      fingerprintLockEnabled: false,
     );
   }
 
@@ -55,6 +58,7 @@ class AppSettingsEntity {
     bool? showImages,
     String? downloadPath,
     int? cacheSize,
+    bool? fingerprintLockEnabled,
   }) {
     return AppSettingsEntity(
       themeMode: themeMode ?? this.themeMode,
@@ -68,6 +72,7 @@ class AppSettingsEntity {
       showImages: showImages ?? this.showImages,
       downloadPath: downloadPath ?? this.downloadPath,
       cacheSize: cacheSize ?? this.cacheSize,
+      fingerprintLockEnabled: fingerprintLockEnabled ?? this.fingerprintLockEnabled,
     );
   }
 }

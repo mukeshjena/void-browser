@@ -2,6 +2,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../constants/storage_constants.dart';
 import '../../features/bookmarks/data/models/bookmark_model.dart';
 import '../../features/downloads/data/models/download_model.dart';
+import '../../features/search/data/models/search_history_model.dart';
 import 'cache_service.dart';
 
 class HiveConfig {
@@ -14,6 +15,9 @@ class HiveConfig {
     }
     if (!Hive.isAdapterRegistered(1)) {
       Hive.registerAdapter(DownloadModelAdapter());
+    }
+    if (!Hive.isAdapterRegistered(2)) {
+      Hive.registerAdapter(SearchHistoryModelAdapter());
     }
     
     // Initialize cache service

@@ -20,103 +20,44 @@ class _WeatherCardWidgetState extends ConsumerState<WeatherCardWidget> {
   }
   
   Future<void> _requestLocationAndFetchWeather() async {
-    // Show loading indicator
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Requesting location permission...'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-
-    // Check if location services are enabled
+    // Silently check if location services are enabled
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Location services are disabled. Please enable them in settings.'),
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
+      // Location services disabled, silently return (weather will show cached/default)
       return;
     }
 
-    // Check location permission
+    // Silently check location permission
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
+      // Silently request permission (system dialog will appear if needed)
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Location permissions are denied'),
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
+        // Permission denied, silently return
         return;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Location permissions are permanently denied. Please enable them in app settings.'),
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'Settings',
-              onPressed: () => Geolocator.openAppSettings(),
-            ),
-          ),
-        );
-      }
+      // Permission permanently denied, silently return
       return;
     }
 
-    // Get current position
+    // Get current position silently
     try {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Getting your location...'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 10), // Timeout after 10 seconds
       );
 
-      // Fetch weather based on GPS coordinates
+      // Silently fetch weather based on GPS coordinates
       await ref.read(weatherProvider.notifier).loadWeatherByLocation(
         position.latitude,
         position.longitude,
       );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Weather updated for your location!'),
-            duration: Duration(seconds: 2),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to get location: ${e.toString()}'),
-            duration: const Duration(seconds: 3),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      // Silently handle errors - weather will show cached/default data
+      // No notifications shown to user
     }
   }
 

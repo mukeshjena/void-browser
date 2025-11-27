@@ -38,7 +38,7 @@ class HorizontalNewsCard extends ConsumerWidget {
       child: InkWell(
         onTap: () {
           if (article.url.isNotEmpty && article.url != 'discover') {
-            TabUtils.openInNewTab(ref, article.url);
+            TabUtils.openInCurrentTab(ref, article.url);
           }
         },
         child: Stack(
