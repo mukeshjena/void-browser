@@ -1,12 +1,37 @@
 class ApiConstants {
+  // Filter list URLs
+  static const String easyListUrl = 
+      'https://easylist-downloads.adblockplus.org/easylist.txt';
+  
+  static const String easyPrivacyUrl = 
+      'https://easylist-downloads.adblockplus.org/easyprivacy.txt';
+  
+  static const String fanboyAnnoyanceUrl = 
+      'https://easylist-downloads.adblockplus.org/fanboy-annoyance.txt';
+  
+  static const String fanboyCookieUrl = 
+      'https://secure.fanboy.co.nz/fanboy-cookiemonster.txt';
+  
+  static const String fanboyNotificationUrl = 
+      'https://easylist-downloads.adblockplus.org/fanboy-notifications.txt';
+  
+  // Regional lists (optional - add as needed)
+  static const String easyListGermanyUrl = 
+      'https://easylist-downloads.adblockplus.org/easylistgermany.txt';
+  
+  static const String easyListChinaUrl = 
+      'https://easylist-downloads.adblockplus.org/easylistchina.txt';
+  
+  static const String easyListDutchUrl = 
+      'https://easylist-downloads.adblockplus.org/easylistdutch.txt';
   // Base URLs
   static const String newsApiBase = 'https://gnews.io/api/v4';
   static const String mealDbBase = 'https://www.themealdb.com/api/json/v1/1';
   static const String weatherApiBase = 'https://api.open-meteo.com/v1';
   static const String unsplashApiBase = 'https://api.unsplash.com';
-  static const String easyListUrl = 'https://easylist.to/easylist/easylist.txt';
-  static const String easyPrivacyUrl =
-      'https://easylist.to/easylist/easyprivacy.txt';
+  // static const String easyListUrl = 'https://easylist.to/easylist/easylist.txt';
+  // static const String easyPrivacyUrl =
+  //     'https://easylist.to/easylist/easyprivacy.txt';
 
   // Endpoints
   static const String newsTopHeadlines = '/top-headlines';

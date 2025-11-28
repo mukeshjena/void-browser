@@ -206,13 +206,17 @@ class _BrowserScreenFullPageState extends ConsumerState<BrowserScreenFullPage> {
                           onTap: () async {
                             Navigator.pop(context);
                             if (_currentUrl.isNotEmpty) {
-                              await ref.read(bookmarksProvider.notifier).addBookmark(
+                              final wasAdded = await ref.read(bookmarksProvider.notifier).addBookmark(
                                 title: _currentTitle.isEmpty ? 'New Bookmark' : _currentTitle,
                                 url: _currentUrl,
                               );
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('✓ Bookmark added!')),
+                                  SnackBar(
+                                    content: Text(wasAdded 
+                                      ? '✓ Bookmark added!' 
+                                      : '✓ Bookmark already exists (updated)'),
+                                  ),
                                 );
                               }
                             }

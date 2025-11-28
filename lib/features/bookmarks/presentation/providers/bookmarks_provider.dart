@@ -22,16 +22,60 @@ class BookmarksNotifier extends StateNotifier<List<BookmarkEntity>> {
     state = bookmarks;
   }
 
-  Future<void> addBookmark({
+  /// Normalize URL for comparison (remove trailing slash, convert to lowercase)
+  String _normalizeUrl(String url) {
+    String normalized = url.trim().toLowerCase();
+    // Remove trailing slash except for root URLs
+    if (normalized.endsWith('/') && normalized.length > 1) {
+      normalized = normalized.substring(0, normalized.length - 1);
+    }
+    // Remove www. prefix for comparison
+    if (normalized.startsWith('www.')) {
+      normalized = normalized.substring(4);
+    }
+    return normalized;
+  }
+
+  /// Add a bookmark. Returns true if added, false if already exists.
+  /// If bookmark already exists, it will be updated with new title/favicon if provided.
+  Future<bool> addBookmark({
     required String title,
     required String url,
     String? faviconUrl,
     String? folderName,
   }) async {
+    // Normalize URL for comparison
+    final normalizedUrl = _normalizeUrl(url);
+    
+    // Check if bookmark with same URL already exists
+    final existingBookmark = state.firstWhere(
+      (bookmark) => _normalizeUrl(bookmark.url) == normalizedUrl,
+      orElse: () => BookmarkEntity(
+        id: '',
+        title: '',
+        url: '',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      ),
+    );
+
+    if (existingBookmark.id.isNotEmpty) {
+      // Bookmark already exists - update it with new information
+      final updatedBookmark = existingBookmark.copyWith(
+        title: title,
+        faviconUrl: faviconUrl ?? existingBookmark.faviconUrl,
+        folderName: folderName ?? existingBookmark.folderName,
+        updatedAt: DateTime.now(),
+      );
+      await updateBookmark(updatedBookmark);
+      return false; // Already existed
+    }
+
+    // Create new bookmark
     final bookmark = BookmarkModel(
       id: _uuid.v4(),
       title: title,
-      url: url,
+      url: url, // Keep original URL format
       faviconUrl: faviconUrl,
       folderName: folderName,
       createdAt: DateTime.now(),
@@ -40,6 +84,7 @@ class BookmarksNotifier extends StateNotifier<List<BookmarkEntity>> {
 
     await _bookmarksBox.put(bookmark.id, bookmark);
     _loadBookmarks();
+    return true; // Successfully added
   }
 
   Future<void> updateBookmark(BookmarkEntity bookmark) async {
@@ -70,7 +115,8 @@ class BookmarksNotifier extends StateNotifier<List<BookmarkEntity>> {
   }
 
   bool isBookmarked(String url) {
-    return state.any((bookmark) => bookmark.url == url);
+    final normalizedUrl = _normalizeUrl(url);
+    return state.any((bookmark) => _normalizeUrl(bookmark.url) == normalizedUrl);
   }
 
   Future<void> exportBookmarks() async {

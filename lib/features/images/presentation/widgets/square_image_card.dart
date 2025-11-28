@@ -15,7 +15,8 @@ class SquareImageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Hero(
+    return RepaintBoundary(
+      child: Hero(
       tag: '${heroPrefix ?? ""}image_${image.id}',
       child: Card(
         elevation: 2,
@@ -52,6 +53,7 @@ class SquareImageCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
       ),
     );
   }

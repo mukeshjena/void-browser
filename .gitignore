@@ -47,18 +47,31 @@ local.properties
 
 # Environment variables
 .env
+.env.local
+.env.*.local
+.env.production
+.env.development
 
 # Keystore files
 *.jks
 *.keystore
+**/upload-keystore.jks
+**/*.jks
+**/*.keystore
 
-# Android signing keys
+# Android signing keys and properties
 android/key.properties
 android/app/key.properties
+**/key.properties
+local.properties
+**/local.properties
 
 # Keystore passwords and sensitive documentation
 KEYSTORE_PASSWORDS.md
 **/KEYSTORE_PASSWORDS.md
+**/*PASSWORD*.md
+**/*SECRET*.md
+**/*CREDENTIAL*.md
 
 # Hive database
 *.hive
@@ -75,6 +88,13 @@ PLAY_STORE_DESCRIPTION.txt
 RELEASE_NOTES.txt
 *.log
 *.tmp
+
+# API keys and secrets
+**/secrets/
+**/credentials/
+**/*secret*
+**/*api_key*
+**/*apikey*
 
 # Generated files
 *.g.dart

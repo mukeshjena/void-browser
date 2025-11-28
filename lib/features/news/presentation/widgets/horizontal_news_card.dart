@@ -29,7 +29,8 @@ class HorizontalNewsCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     
-    return Card(
+    return RepaintBoundary(
+      child: Card(
       elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -49,6 +50,10 @@ class HorizontalNewsCard extends ConsumerWidget {
               CachedNetworkImage(
                 imageUrl: article.imageUrl!,
                 fit: BoxFit.cover,
+                fadeInDuration: const Duration(milliseconds: 200),
+                fadeOutDuration: const Duration(milliseconds: 100),
+                memCacheWidth: 600, // Limit memory cache size
+                memCacheHeight: 400,
                 placeholder: (context, url) => Container(
                   color: theme.colorScheme.surfaceVariant,
                   child: const Center(child: CircularProgressIndicator()),
@@ -183,6 +188,7 @@ class HorizontalNewsCard extends ConsumerWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }

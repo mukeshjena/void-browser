@@ -29,7 +29,8 @@ class CompactNewsCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     
-    return Card(
+    return RepaintBoundary(
+      child: Card(
       elevation: 1,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
@@ -55,6 +56,10 @@ class CompactNewsCard extends ConsumerWidget {
                     width: 100,
                     height: 100,
                     fit: BoxFit.cover,
+                    fadeInDuration: const Duration(milliseconds: 200),
+                    fadeOutDuration: const Duration(milliseconds: 100),
+                    memCacheWidth: 200, // Limit memory cache size
+                    memCacheHeight: 200,
                     placeholder: (context, url) => Container(
                       width: 100,
                       height: 100,
@@ -139,6 +144,7 @@ class CompactNewsCard extends ConsumerWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

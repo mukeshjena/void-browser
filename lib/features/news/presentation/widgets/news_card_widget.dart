@@ -36,7 +36,8 @@ class NewsCardWidget extends ConsumerWidget {
     
     // Grid layout - Compact vertical design
     if (isFullWidth) {
-      return Card(
+      return RepaintBoundary(
+        child: Card(
         elevation: 2,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
@@ -139,11 +140,13 @@ class NewsCardWidget extends ConsumerWidget {
             ],
           ),
         ),
+      ),
       );
     }
     
     // Carousel layout (original)
-    return Container(
+    return RepaintBoundary(
+      child: Container(
       width: 280,
       height: 220,
       margin: const EdgeInsets.only(right: 12),
@@ -253,6 +256,7 @@ class NewsCardWidget extends ConsumerWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

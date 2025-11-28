@@ -42,8 +42,13 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
   final Map<String, bool> _isInternalLoad = {}; // Track if we initiated the load (not external)
   final Map<String, List<String>> _navigationHistory = {}; // Track navigation history per tab
   final Map<String, DateTime> _lastScrollUpdate = {}; // Debounce scroll updates
-  static const int _scrollThreshold = 20; // Increased threshold to prevent flickering
-  static const int _scrollDebounceMs = 150; // Debounce time for scroll updates
+  final Map<String, DateTime> _lastScrollEventTime = {}; // Track last scroll event time
+  final Map<String, int> _lastSignificantScrollY = {}; // Track last significant scroll position
+  final Map<String, bool> _isScrolling = {}; // Track if actively scrolling
+  static const int _scrollThreshold = 30; // Increased threshold to prevent flickering
+  static const int _scrollDebounceMs = 200; // Debounce time for scroll updates
+  static const int _scrollStopDelayMs = 400; // Time to wait before considering scroll stopped
+  static const int _minStateChangeIntervalMs = 600; // Minimum time between appbar state changes
   static const int _debounceMs = 1000; // Debounce time for URL loading (1 second)
 
   @override
@@ -104,38 +109,72 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
     
     final now = DateTime.now();
     final lastUpdate = _lastScrollUpdate[tabId];
+    final lastScrollEventTime = _lastScrollEventTime[tabId];
     final lastScrollY = _lastScrollY[tabId] ?? 0;
-    
-    // Debounce scroll updates to reduce setState calls and prevent flickering
-    if (lastUpdate != null && now.difference(lastUpdate).inMilliseconds < _scrollDebounceMs) {
-      // Update last scroll position but don't process yet
-      _lastScrollY[tabId] = y;
-      return;
-    }
+    final lastSignificantScrollY = _lastSignificantScrollY[tabId] ?? y;
     
     // Calculate scroll delta
     final delta = y - lastScrollY;
+    final significantDelta = y - lastSignificantScrollY;
+    
+    // Check if we have significant movement
+    final hasSignificantMovement = significantDelta.abs() >= _scrollThreshold;
+    
+    // Update tracking variables
+    _lastScrollEventTime[tabId] = now;
+    _lastScrollY[tabId] = y;
+    
+    // If we have significant movement, mark as scrolling and update significant position
+    if (hasSignificantMovement) {
+      _isScrolling[tabId] = true;
+      _lastSignificantScrollY[tabId] = y;
+    } else {
+      // Small movement - check if scroll has stopped
+      if (lastScrollEventTime != null) {
+        final timeSinceLastSignificantMovement = now.difference(lastScrollEventTime).inMilliseconds;
+        if (timeSinceLastSignificantMovement > _scrollStopDelayMs) {
+          // Scroll has stopped - lock the current appbar state
+          _isScrolling[tabId] = false;
+          // Don't process any state changes when scroll is stopped
+          return;
+        }
+      }
+    }
+    
+    // If not actively scrolling, don't change appbar state
+    if (_isScrolling[tabId] != true) {
+      return;
+    }
+    
+    // Debounce scroll updates to reduce setState calls
+    if (lastUpdate != null && now.difference(lastUpdate).inMilliseconds < _scrollDebounceMs) {
+      return;
+    }
     
     // Only react to significant scroll changes to prevent flickering
     if (delta.abs() < _scrollThreshold) {
-      _lastScrollY[tabId] = y;
       return;
+    }
+    
+    // Prevent rapid state changes - enforce minimum interval between changes
+    if (lastUpdate != null) {
+      final timeSinceLastChange = now.difference(lastUpdate).inMilliseconds;
+      if (timeSinceLastChange < _minStateChangeIntervalMs) {
+        // Too soon to change state again
+        return;
+      }
     }
     
     // Determine if app bar should be visible (show when scrolling up, hide when scrolling down)
     final shouldShow = delta < 0; // Negative delta means scrolling up
     final currentlyVisible = _isAppBarVisible[tabId] ?? true;
     
-    // Only update if state actually changed to prevent unnecessary rebuilds
-    if (shouldShow != currentlyVisible && mounted) {
+    // Only update if state actually changed and we have significant movement
+    if (shouldShow != currentlyVisible && delta.abs() >= _scrollThreshold && mounted) {
       _lastScrollUpdate[tabId] = now;
-      _lastScrollY[tabId] = y;
       setState(() {
         _isAppBarVisible[tabId] = shouldShow;
       });
-    } else {
-      // Update scroll position even if state didn't change
-      _lastScrollY[tabId] = y;
     }
   }
 
@@ -301,7 +340,7 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
                             Navigator.pop(context);
                             final url = _currentUrls[tabId] ?? '';
                             if (url.isNotEmpty && url != 'discover') {
-                              await ref.read(bookmarksProvider.notifier).addBookmark(
+                              final wasAdded = await ref.read(bookmarksProvider.notifier).addBookmark(
                                 title: _currentTitles[tabId]?.isEmpty ?? true
                                     ? 'New Bookmark'
                                     : _currentTitles[tabId]!,
@@ -309,7 +348,11 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
                               );
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('✓ Bookmark added!')),
+                                  SnackBar(
+                                    content: Text(wasAdded 
+                                      ? '✓ Bookmark added!' 
+                                      : '✓ Bookmark already exists (updated)'),
+                                  ),
                                 );
                               }
                             }
@@ -851,10 +894,13 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
       }
       
       // Update current URL if tab URL changed (even if it's discover)
+      // Only update if URL actually changed to avoid unnecessary rebuilds
       if (activeTab.url != _currentUrls[tabId] && mounted) {
-        setState(() {
-          _currentUrls[tabId] = activeTab.url;
-        });
+        _currentUrls[tabId] = activeTab.url;
+        // Only call setState if this will cause a visible change
+        if (!isDiscover || activeTab.url != 'discover') {
+          setState(() {});
+        }
       }
     }
 

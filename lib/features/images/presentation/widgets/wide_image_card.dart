@@ -15,7 +15,8 @@ class WideImageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Hero(
+    return RepaintBoundary(
+      child: Hero(
       tag: '${heroPrefix ?? ""}image_${image.id}',
       child: Card(
         elevation: 4,
@@ -33,6 +34,10 @@ class WideImageCard extends StatelessWidget {
                 child: CachedNetworkImage(
                   imageUrl: image.smallUrl,
                   fit: BoxFit.cover,
+                  fadeInDuration: const Duration(milliseconds: 200),
+                  fadeOutDuration: const Duration(milliseconds: 100),
+                  memCacheWidth: 600, // Limit memory cache size for better performance
+                  memCacheHeight: 338,
                   placeholder: (context, url) => Container(
                     color: Colors.grey[300],
                     child: const Center(
@@ -131,6 +136,7 @@ class WideImageCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

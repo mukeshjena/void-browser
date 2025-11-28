@@ -17,7 +17,8 @@ class MasonryImageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Hero(
+    return RepaintBoundary(
+      child: Hero(
       tag: '${heroPrefix ?? ""}image_${image.id}',
       child: Card(
         elevation: 2,
@@ -33,6 +34,9 @@ class MasonryImageCard extends StatelessWidget {
             child: CachedNetworkImage(
               imageUrl: image.smallUrl,
               fit: BoxFit.cover,
+              fadeInDuration: const Duration(milliseconds: 200),
+              fadeOutDuration: const Duration(milliseconds: 100),
+              memCacheWidth: 400, // Limit memory cache size for better performance
               placeholder: (context, url) => Container(
                 color: Colors.grey[300],
                 child: const Center(
@@ -50,6 +54,7 @@ class MasonryImageCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
       ),
     );
   }

@@ -46,5 +46,9 @@ class StorageConstants {
   static const double defaultFontSize = 16.0;
   static const bool defaultShowImages = true;
   static const int defaultCacheSize = 100; // MB
+
+  static const String keyBlockedCount = 'adblock_blocked_count';
+  static const String keyWhitelist = 'adblock_whitelist';
+  static const String keyLastUpdate = 'adblock_last_update';
 }
 

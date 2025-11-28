@@ -1,9 +1,11 @@
+import 'dart:collection';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/api_constants.dart';
 import '../../core/utils/validators.dart';
 import '../../features/bookmarks/presentation/providers/bookmarks_provider.dart';
+import '../../features/adblock/presentation/providers/adblock_provider.dart';
 
 /// Chrome-like WebView component with gestures and modern UX
 class ChromeWebView extends ConsumerStatefulWidget {
@@ -416,16 +418,18 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
                 title: const Text('Add to Bookmarks'),
                 onTap: () async {
                   if (_currentUrl.isNotEmpty) {
-                    await ref.read(bookmarksProvider.notifier).addBookmark(
+                    final wasAdded = await ref.read(bookmarksProvider.notifier).addBookmark(
                       title: _currentTitle.isEmpty ? _currentUrl : _currentTitle,
                       url: _currentUrl,
                     );
                     if (context.mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Added to bookmarks'),
-                          duration: Duration(seconds: 2),
+                        SnackBar(
+                          content: Text(wasAdded 
+                            ? 'Added to bookmarks' 
+                            : 'Bookmark already exists (updated)'),
+                          duration: const Duration(seconds: 2),
                         ),
                       );
                     }
@@ -474,41 +478,76 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
         
         // WebView
         Expanded(
-          child: InAppWebView(
-            initialUrlRequest: widget.initialUrl != null && 
-                widget.initialUrl!.trim() != 'discover' &&
-                widget.initialUrl!.trim() != 'http://discover' &&
-                widget.initialUrl!.trim() != 'https://discover' &&
-                widget.initialUrl!.trim() != 'http://discover/' &&
-                widget.initialUrl!.trim() != 'https://discover/'
-                ? URLRequest(url: WebUri(widget.initialUrl!))
-                : null,
-            pullToRefreshController: pullToRefreshController,
-            initialSettings: InAppWebViewSettings(
-              javaScriptEnabled: true,
-              domStorageEnabled: true,
-              databaseEnabled: true,
-              supportZoom: true, // Enable pinch-to-zoom
-              builtInZoomControls: false, // Hide built-in zoom controls (use pinch-to-zoom)
-              displayZoomControls: false, // Hide zoom controls UI
-              useWideViewPort: true, // Enable wide viewport for proper mobile scaling
-              loadWithOverviewMode: true, // Load with overview mode for better initial scaling
-              useHybridComposition: true,
-              verticalScrollBarEnabled: true,
-              horizontalScrollBarEnabled: true,
-              // Android specific zoom settings
-              mediaPlaybackRequiresUserGesture: false,
-              // iOS specific settings
-              allowsInlineMediaPlayback: true,
-              // Ensure proper viewport meta tag handling
-              javaScriptCanOpenWindowsAutomatically: false,
-            ),
+          child: Consumer(
+            builder: (context, ref, child) {
+              // Use select to only watch isEnabled, not entire state
+              final isAdBlockEnabled = ref.watch(adBlockProvider.select((state) => state.isEnabled));
+              final adBlockNotifier = ref.read(adBlockProvider.notifier);
+              
+              // Get content blockers and ad blocking JavaScript
+              final contentBlockers = isAdBlockEnabled 
+                  ? adBlockNotifier.getContentBlockers() 
+                  : <ContentBlocker>[];
+              final adBlockingJS = isAdBlockEnabled 
+                  ? adBlockNotifier.getAdBlockingJavaScript() 
+                  : '';
+              
+              return InAppWebView(
+                initialUrlRequest: widget.initialUrl != null && 
+                    widget.initialUrl!.trim() != 'discover' &&
+                    widget.initialUrl!.trim() != 'http://discover' &&
+                    widget.initialUrl!.trim() != 'https://discover' &&
+                    widget.initialUrl!.trim() != 'http://discover/' &&
+                    widget.initialUrl!.trim() != 'https://discover/'
+                    ? URLRequest(url: WebUri(widget.initialUrl!))
+                    : null,
+                pullToRefreshController: pullToRefreshController,
+                initialSettings: InAppWebViewSettings(
+                  javaScriptEnabled: true, // CRITICAL: Must be enabled for ad blocking
+                  domStorageEnabled: true,
+                  databaseEnabled: true,
+                  supportZoom: true, // Enable pinch-to-zoom
+                  builtInZoomControls: false, // Hide built-in zoom controls (use pinch-to-zoom)
+                  displayZoomControls: false, // Hide zoom controls UI
+                  useWideViewPort: true, // Enable wide viewport for proper mobile scaling
+                  loadWithOverviewMode: true, // Load with overview mode for better initial scaling
+                  useHybridComposition: true,
+                  verticalScrollBarEnabled: true,
+                  horizontalScrollBarEnabled: true,
+                  // Android specific zoom settings
+                  mediaPlaybackRequiresUserGesture: false,
+                  // iOS specific settings
+                  allowsInlineMediaPlayback: true,
+                  // Ensure proper viewport meta tag handling
+                  javaScriptCanOpenWindowsAutomatically: false,
+                  // CRITICAL: Ad blocking content blockers (native-level blocking)
+                  contentBlockers: contentBlockers,
+                  // Performance optimizations
+                  cacheEnabled: true,
+                  clearCache: false, // Don't clear cache on each load
+                ),
+                // Inject ad-blocking scripts at multiple lifecycle stages for maximum effectiveness
+                // Combined approach: Use both content blockers and JavaScript
+                initialUserScripts: isAdBlockEnabled && adBlockingJS.isNotEmpty
+                    ? UnmodifiableListView([
+                        // Inject at document start (earliest possible - before page loads)
+                        UserScript(
+                          source: adBlockingJS,
+                          injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+                        ),
+                        // Also inject at document end (after DOM is ready)
+                        UserScript(
+                          source: adBlockingJS,
+                          injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
+                        ),
+                      ])
+                    : null,
             onWebViewCreated: (controller) {
               webViewController = controller;
               // Initialize desktop mode state from saved preference
               // This will be applied when the page loads
             },
-            onLoadStart: (controller, url) {
+            onLoadStart: (controller, url) async {
               if (mounted) {
                 setState(() {
                   _isLoading = true;
@@ -517,6 +556,66 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
               }
               widget.onUrlChanged?.call(url.toString());
               _updateNavigationState();
+              
+              // Inject ad blocking script immediately on load start (fallback)
+              if (isAdBlockEnabled && adBlockingJS.isNotEmpty) {
+                try {
+                  final urlStr = url.toString().toLowerCase();
+                  if (urlStr.contains('youtube.com') || urlStr.contains('youtu.be')) {
+                    // Inject immediately for YouTube
+                    await controller.evaluateJavascript(source: adBlockingJS);
+                  }
+                } catch (e) {
+                  // Ignore errors - script might already be injected
+                }
+              }
+            },
+            shouldOverrideUrlLoading: (controller, navigationAction) async {
+              // OPTIMIZED: Block ad URLs at the network level with error handling
+              if (isAdBlockEnabled) {
+                try {
+                  final url = navigationAction.request.url.toString();
+                  final lowerUrl = url.toLowerCase();
+                  
+                  // CRITICAL: NEVER block YouTube/Google player APIs - allow all YouTube functionality
+                  // Only block actual ad endpoints, not player APIs
+                  if (lowerUrl.contains('youtube.com') || 
+                      lowerUrl.contains('youtu.be') ||
+                      lowerUrl.contains('googlevideo.com') ||
+                      lowerUrl.contains('google.com') ||
+                      lowerUrl.contains('gstatic.com')) {
+                    // Block IMA SDK completely (ad SDK, not player API)
+                    if (lowerUrl.contains('imasdk.googleapis.com')) {
+                      adBlockNotifier.incrementBlockedCount();
+                      return NavigationActionPolicy.CANCEL;
+                    }
+                    // Block ONLY actual ad API endpoints (not player APIs)
+                    // Be very selective - only block confirmed ad endpoints
+                    if (lowerUrl.contains('/api/stats/ads') ||
+                        lowerUrl.contains('/ptracking') ||
+                        lowerUrl.contains('/pagead')) {
+                      adBlockNotifier.incrementBlockedCount();
+                      return NavigationActionPolicy.CANCEL;
+                    }
+                    // Allow all other YouTube/Google URLs (player APIs, search, navigation, videos, etc.)
+                    return NavigationActionPolicy.ALLOW;
+                  }
+                  
+                  // Quick check - skip if URL is too short or is main document
+                  if (url.length < 10 || navigationAction.request.mainDocumentURL == url) {
+                    return NavigationActionPolicy.ALLOW;
+                  }
+                  
+                  if (adBlockNotifier.shouldBlockUrl(url)) {
+                    adBlockNotifier.incrementBlockedCount();
+                    return NavigationActionPolicy.CANCEL;
+                  }
+                } catch (e) {
+                  // On error, allow the request to prevent crashes
+                  return NavigationActionPolicy.ALLOW;
+                }
+              }
+              return NavigationActionPolicy.ALLOW;
             },
             onLoadStop: (controller, url) async {
               if (mounted) {
@@ -526,9 +625,26 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
                 });
               }
               pullToRefreshController?.endRefreshing();
+              
+              // Reinject ad blocking script after page load (ensures it's active)
+              if (isAdBlockEnabled && adBlockingJS.isNotEmpty) {
+                try {
+                  final urlStr = url.toString().toLowerCase();
+                  if (urlStr.contains('youtube.com') || urlStr.contains('youtu.be')) {
+                    // Small delay to ensure DOM is ready
+                    await Future.delayed(const Duration(milliseconds: 100));
+                    await controller.evaluateJavascript(source: adBlockingJS);
+                  }
+                } catch (e) {
+                  // Ignore errors
+                }
+              }
               _currentTitle = await controller.getTitle() ?? '';
               _updateNavigationState();
               widget.onUrlChanged?.call(url.toString());
+              
+              // Note: JavaScript is injected via initialUserScripts, no need to inject here
+              // This reduces redundant injections and improves performance
               
               // Ensure viewport meta tag allows zooming and respects desktop mode
               try {
@@ -582,11 +698,12 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
                 pullToRefreshController?.endRefreshing();
               }
               
-              // Throttle progress updates to reduce rebuilds (update max every 150ms)
+              // Throttle progress updates to reduce rebuilds (update max every 200ms)
+              // More aggressive throttling for better performance
               final now = DateTime.now();
               if (_lastProgressUpdate == null || 
-                  now.difference(_lastProgressUpdate!).inMilliseconds > 150 ||
-                  progress == 100) {
+                  now.difference(_lastProgressUpdate!).inMilliseconds > 200 ||
+                  progress == 100 || progress == 0) {
                 _lastProgressUpdate = now;
                 if (mounted) {
                   setState(() {
@@ -624,6 +741,19 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
             onDownloadStartRequest: (controller, downloadStartRequest) async {
               // Handle download requests from WebView
               final url = downloadStartRequest.url.toString();
+              
+              try {
+                // Block ad-related downloads with error handling
+                if (isAdBlockEnabled && url.length > 10) {
+                  if (adBlockNotifier.shouldBlockUrl(url)) {
+                    adBlockNotifier.incrementBlockedCount();
+                    return;
+                  }
+                }
+              } catch (e) {
+                // On error, allow download to prevent crashes
+              }
+              
               final suggestedFilename = downloadStartRequest.suggestedFilename ?? 
                   url.split('/').last.split('?').first;
               
@@ -646,6 +776,12 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
               
               // Cancel the default download handler - return true to cancel, false to allow default
               // We return true to cancel because we're handling it ourselves
+            },
+            onConsoleMessage: (controller, consoleMessage) {
+              // Optionally log blocked requests (for debugging)
+              // print('Console: ${consoleMessage.message}');
+            },
+              );
             },
           ),
         ),
