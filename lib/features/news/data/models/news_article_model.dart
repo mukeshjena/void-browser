@@ -14,17 +14,44 @@ class NewsArticleModel extends NewsArticleEntity {
   });
 
   factory NewsArticleModel.fromJson(Map<String, dynamic> json) {
-    return NewsArticleModel(
-      id: json['url'] ?? '', // Use URL as ID since API doesn't provide ID
-      title: json['title'] ?? 'No Title',
-      description: json['description'],
-      url: json['url'] ?? '',
-      imageUrl: json['urlToImage'],
-      source: json['source']?['name'] ?? 'Unknown',
-      author: json['author'],
-      publishedAt: DateTime.parse(json['publishedAt'] ?? DateTime.now().toIso8601String()),
-      category: 'general',
-    );
+    try {
+      // Safely parse publishedAt
+      DateTime publishedAt;
+      try {
+        if (json['publishedAt'] != null && json['publishedAt'].toString().isNotEmpty) {
+          publishedAt = DateTime.parse(json['publishedAt'].toString());
+        } else {
+          publishedAt = DateTime.now();
+        }
+      } catch (e) {
+        publishedAt = DateTime.now();
+      }
+
+      return NewsArticleModel(
+        id: json['url']?.toString() ?? '', // Use URL as ID since API doesn't provide ID
+        title: json['title']?.toString() ?? 'No Title',
+        description: json['description']?.toString(),
+        url: json['url']?.toString() ?? '',
+        imageUrl: json['urlToImage']?.toString(),
+        source: json['source']?['name']?.toString() ?? 'Unknown',
+        author: json['author']?.toString(),
+        publishedAt: publishedAt,
+        category: 'general',
+      );
+    } catch (e) {
+      // Return a default article if parsing fails
+      return NewsArticleModel(
+        id: '',
+        title: 'Error loading article',
+        description: null,
+        url: '',
+        imageUrl: null,
+        source: 'Unknown',
+        author: null,
+        publishedAt: DateTime.now(),
+        category: 'general',
+      );
+    }
   }
 
   Map<String, dynamic> toJson() {

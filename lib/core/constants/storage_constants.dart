@@ -50,5 +50,10 @@ class StorageConstants {
   static const String keyBlockedCount = 'adblock_blocked_count';
   static const String keyWhitelist = 'adblock_whitelist';
   static const String keyLastUpdate = 'adblock_last_update';
+  static const String keyQuickLinks = 'quick_links';
+  
+  // News preferences
+  static const String keyNewsSelectedCategory = 'news_selected_category';
+  static const String keyNewsLastCategory = 'news_last_category';
 }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -9,6 +10,7 @@ import '../../../news/presentation/widgets/horizontal_news_card.dart';
 import '../../../recipes/presentation/widgets/recipe_card_widget.dart';
 import '../../../images/presentation/widgets/square_image_card.dart';
 import '../../../weather/presentation/widgets/weather_card_widget.dart';
+import '../../../quicklinks/presentation/widgets/quick_links_widget.dart';
 import '../../../browser/presentation/providers/browser_navigation_provider.dart';
 import '../../../images/presentation/screens/image_detail_screen.dart';
 import '../../../../shared/widgets/shimmer_loading.dart';
@@ -29,26 +31,44 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
     _scrollController = ScrollController();
     _scrollController.addListener(_onScroll);
     
-    // Load initial data
+    // Load initial data asynchronously to avoid blocking UI
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final newsState = ref.read(newsProvider);
-      final recipesState = ref.read(recipesProvider);
-      final weatherState = ref.read(weatherProvider);
-      final imagesState = ref.read(imagesProvider);
+      // Use scheduleMicrotask to yield to UI thread
+      scheduleMicrotask(() {
+        if (!mounted) return;
+        
+        final newsState = ref.read(newsProvider);
+        final recipesState = ref.read(recipesProvider);
+        final weatherState = ref.read(weatherProvider);
+        final imagesState = ref.read(imagesProvider);
 
-      if (newsState.articles.isEmpty && !newsState.isLoading) {
-        ref.read(newsProvider.notifier).loadTopHeadlines();
-      }
-      if (recipesState.recipes.isEmpty && !recipesState.isLoading) {
-        ref.read(recipesProvider.notifier).loadRandomRecipes();
-      }
-      // Automatically load weather by GPS location
-      if (weatherState.weather == null && !weatherState.isLoading) {
-        _loadWeatherByGPS();
-      }
-      if (imagesState.images.isEmpty && !imagesState.isLoading) {
-        ref.read(imagesProvider.notifier).loadRandomImages();
-      }
+        // Load data in sequence with delays to avoid blocking
+        if (newsState.articles.isEmpty && !newsState.isLoading) {
+          ref.read(newsProvider.notifier).loadTopHeadlines();
+        }
+        
+        Future.delayed(const Duration(milliseconds: 50), () {
+          if (!mounted) return;
+          if (recipesState.recipes.isEmpty && !recipesState.isLoading) {
+            ref.read(recipesProvider.notifier).loadRandomRecipes();
+          }
+        });
+        
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (!mounted) return;
+          // Automatically load weather by GPS location
+          if (weatherState.weather == null && !weatherState.isLoading) {
+            _loadWeatherByGPS();
+          }
+        });
+        
+        Future.delayed(const Duration(milliseconds: 150), () {
+          if (!mounted) return;
+          if (imagesState.images.isEmpty && !imagesState.isLoading) {
+            ref.read(imagesProvider.notifier).loadRandomImages();
+          }
+        });
+      });
     });
   }
 
@@ -151,6 +171,45 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
                 margin: const EdgeInsets.all(16),
                 child: const WeatherCardWidget(),
               ),
+            ),
+
+            // Section: Quick Links
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF9C27B0), Color(0xFFE91E63)],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.link, color: Colors.white, size: 16),
+                          SizedBox(width: 6),
+                          Text(
+                            'Quick Links',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Quick Links Row
+            const SliverToBoxAdapter(
+              child: QuickLinksWidget(),
             ),
 
             // Section: Top Stories

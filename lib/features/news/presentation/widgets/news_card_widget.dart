@@ -62,6 +62,8 @@ class NewsCardWidget extends ConsumerWidget {
                     fadeInDuration: const Duration(milliseconds: 200),
                     fadeOutDuration: const Duration(milliseconds: 100),
                     memCacheWidth: 400, // Limit memory cache size
+                    maxWidthDiskCache: 800, // Limit disk cache size
+                    maxHeightDiskCache: 600,
                     placeholder: (context, url) => Container(
                       color: theme.colorScheme.surfaceVariant,
                       child: const Center(

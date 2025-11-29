@@ -54,6 +54,10 @@ class HeroNewsCard extends ConsumerWidget {
                     child: CachedNetworkImage(
                       imageUrl: article.imageUrl!,
                       fit: BoxFit.cover,
+                      memCacheWidth: 600,
+                      memCacheHeight: 400,
+                      maxWidthDiskCache: 1200,
+                      maxHeightDiskCache: 800,
                       placeholder: (context, url) => Container(
                         color: theme.colorScheme.surfaceVariant,
                         child: const Center(child: CircularProgressIndicator()),

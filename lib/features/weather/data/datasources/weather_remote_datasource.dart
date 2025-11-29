@@ -18,6 +18,7 @@ class WeatherRemoteDataSourceImpl implements WeatherRemoteDataSource {
   @override
   Future<WeatherModel> getCurrentWeather(double latitude, double longitude) async {
     try {
+      // Get weather data
       final response = await dio.get(
         '$baseUrl/forecast',
         queryParameters: {
@@ -30,7 +31,42 @@ class WeatherRemoteDataSourceImpl implements WeatherRemoteDataSource {
       );
 
       if (response.statusCode == 200) {
-        return WeatherModel.fromJson(response.data, latitude, longitude);
+        // Get location name using reverse geocoding (OpenStreetMap Nominatim)
+        String? locationName;
+        try {
+          final reverseGeoResponse = await dio.get(
+            'https://nominatim.openstreetmap.org/reverse',
+            queryParameters: {
+              'lat': latitude,
+              'lon': longitude,
+              'format': 'json',
+              'addressdetails': 1,
+            },
+            options: Options(
+              headers: {
+                'User-Agent': 'VoidBrowser/1.0', // Required by Nominatim
+              },
+            ),
+          );
+
+          if (reverseGeoResponse.statusCode == 200 && 
+              reverseGeoResponse.data['address'] != null) {
+            final address = reverseGeoResponse.data['address'];
+            // Try to get city name, fallback to other location identifiers
+            locationName = address['city'] ?? 
+                          address['town'] ?? 
+                          address['village'] ?? 
+                          address['municipality'] ?? 
+                          address['county'] ?? 
+                          address['state'] ?? 
+                          address['country'];
+          }
+        } catch (e) {
+          // If reverse geocoding fails, continue without location name
+          // It will default to 'Unknown Location' in the model
+        }
+
+        return WeatherModel.fromJson(response.data, latitude, longitude, locationName: locationName);
       } else {
         throw Exception('Failed to load weather');
       }

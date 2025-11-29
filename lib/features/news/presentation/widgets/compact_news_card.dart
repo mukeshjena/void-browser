@@ -60,6 +60,8 @@ class CompactNewsCard extends ConsumerWidget {
                     fadeOutDuration: const Duration(milliseconds: 100),
                     memCacheWidth: 200, // Limit memory cache size
                     memCacheHeight: 200,
+                    maxWidthDiskCache: 400,
+                    maxHeightDiskCache: 400,
                     placeholder: (context, url) => Container(
                       width: 100,
                       height: 100,

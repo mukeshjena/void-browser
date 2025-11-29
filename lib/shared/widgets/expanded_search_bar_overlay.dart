@@ -37,6 +37,7 @@ class _ExpandedSearchBarOverlayState extends ConsumerState<ExpandedSearchBarOver
   bool _isListening = false;
   double _lastKeyboardHeight = 0.0;
   late Debouncer _searchDebouncer;
+  bool _hasBeenFocused = false; // Track if field has been focused before
 
   @override
   void initState() {
@@ -44,17 +45,29 @@ class _ExpandedSearchBarOverlayState extends ConsumerState<ExpandedSearchBarOver
     _focusNode = FocusNode();
     _searchDebouncer = Debouncer(delay: const Duration(milliseconds: 300));
     WidgetsBinding.instance.addObserver(this);
+    
+    // Listen to focus changes to select all only on first focus
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus && !_hasBeenFocused) {
+        // First time gaining focus - select all text
+        _hasBeenFocused = true;
+        if (widget.controller.text.isNotEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && widget.controller.text.isNotEmpty) {
+              widget.controller.selection = TextSelection(
+                baseOffset: 0,
+                extentOffset: widget.controller.text.length,
+              );
+            }
+          });
+        }
+      }
+    });
+    
     // Auto-focus when overlay appears
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _focusNode.requestFocus();
-        // Select all text if present
-        if (widget.controller.text.isNotEmpty) {
-          widget.controller.selection = TextSelection(
-            baseOffset: 0,
-            extentOffset: widget.controller.text.length,
-          );
-        }
         // Load initial suggestions
         _loadSuggestions(widget.controller.text);
       }
@@ -286,19 +299,8 @@ class _ExpandedSearchBarOverlayState extends ConsumerState<ExpandedSearchBarOver
                                           fontWeight: FontWeight.normal,
                                         ),
                                         cursorColor: theme.colorScheme.primary,
-                                        onTap: () {
-                                          // Select all text when search bar is tapped and has content
-                                          if (widget.controller.text.isNotEmpty) {
-                                            WidgetsBinding.instance.addPostFrameCallback((_) {
-                                              if (mounted && widget.controller.text.isNotEmpty) {
-                                                widget.controller.selection = TextSelection(
-                                                  baseOffset: 0,
-                                                  extentOffset: widget.controller.text.length,
-                                                );
-                                              }
-                                            });
-                                          }
-                                        },
+                                        // Remove onTap handler - let Flutter handle text selection naturally
+                                        // Only select all on first focus (handled by focus listener)
                                         onChanged: (value) {
                                           widget.onChanged?.call(value);
                                           // Load suggestions with debouncing

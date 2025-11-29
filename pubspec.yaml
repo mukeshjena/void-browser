@@ -58,6 +58,9 @@ dependencies:
   
   # HTTP Parser for reader mode
   html: ^0.15.4
+  
+  # QR Code Generator
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:

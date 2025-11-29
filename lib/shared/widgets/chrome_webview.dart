@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -50,6 +51,7 @@ class ChromeWebViewController {
   final Future<String?> Function() currentUrl;
   final Future<String?> Function() currentTitle;
   final Future<String> Function() extractArticleContent;
+  final Future<Uint8List?> Function() takeScreenshot;
 
   ChromeWebViewController({
     required this.loadUrl,
@@ -68,6 +70,7 @@ class ChromeWebViewController {
     required this.currentUrl,
     required this.currentTitle,
     required this.extractArticleContent,
+    required this.takeScreenshot,
   });
 }
 
@@ -110,6 +113,7 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
           currentUrl: () async => _currentUrl,
           currentTitle: () async => _currentTitle,
           extractArticleContent: _extractArticleContent,
+          takeScreenshot: _takeScreenshot,
         ),
       );
     });
@@ -205,6 +209,18 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
       }
     }
     return '';
+  }
+
+  Future<Uint8List?> _takeScreenshot() async {
+    if (webViewController != null) {
+      try {
+        final screenshot = await webViewController!.takeScreenshot();
+        return screenshot;
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
   }
 
   void _enableReaderMode() async {

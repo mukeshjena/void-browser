@@ -111,3 +111,79 @@ RELEASE_NOTES.txt
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Build artifacts and generated files
+build/
+*.dill
+*.dill.track.dill
+*.lock
+
+# Flutter build outputs
+**/build/
+**/outputs/
+**/intermediates/
+**/tmp/
+**/generated/
+
+# Hive database files (user data)
+*.hive
+*.lock
+
+# Sensitive configuration files
+android/key.properties
+android/app/key.properties
+**/key.properties
+android/local.properties
+**/local.properties
+android/upload-keystore.jks
+**/*.jks
+**/*.keystore
+KEYSTORE_PASSWORDS.md
+**/KEYSTORE_PASSWORDS.md
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+!.env.template
+ENV_FILE_TEMPLATE.txt
+
+# API keys and credentials
+**/secrets/
+**/credentials/
+**/*secret*
+**/*api_key*
+**/*apikey*
+**/*credential*
+
+# Logs and temporary files
+*.log
+*.tmp
+*.cache
+*.swp
+*.swo
+*~
+
+# IDE and editor files
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.fleet/
+*.code-workspace
+
+# Package manager files
+.packages
+.pub-cache/
+.pub/
+pubspec.lock
+
+# Coverage and test files
+coverage/
+*.coverage
+.test_coverage/
+
+# Documentation with sensitive info
+PLAY_STORE_DESCRIPTION.txt
+RELEASE_NOTES.txt

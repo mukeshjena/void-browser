@@ -36,6 +36,17 @@ class CacheEntry {
       );
 }
 
+/// Cache list result with metadata
+class CacheListResult<T> {
+  final List<T> data;
+  final DateTime fetchedAt;
+
+  CacheListResult({
+    required this.data,
+    required this.fetchedAt,
+  });
+}
+
 /// Cache service for managing API response caching with Hive
 class CacheService {
   static Box? _cacheBox;
@@ -98,6 +109,39 @@ class CacheService {
       // Parse and return cached list
       final valueJson = jsonDecode(entry.value) as List;
       return valueJson.map((item) => fromJson(item as Map<String, dynamic>)).toList();
+    } catch (e) {
+      // If parsing fails, remove invalid cache asynchronously
+      cacheBox.delete(key).catchError((_) {});
+      return null;
+    }
+  }
+
+  /// Get cached list with metadata (returns list and fetchedAt timestamp)
+  static CacheListResult<T>? getListWithMetadata<T>(
+    String key,
+    T Function(Map<String, dynamic>) fromJson,
+  ) {
+    try {
+      final entryJson = cacheBox.get(key);
+      if (entryJson == null) return null;
+
+      final entry = CacheEntry.fromJson(Map<String, dynamic>.from(entryJson as Map));
+      
+      // Check if expired
+      if (entry.isExpired) {
+        // Delete asynchronously to avoid blocking
+        cacheBox.delete(key).catchError((_) {});
+        return null;
+      }
+
+      // Parse and return cached list with metadata
+      final valueJson = jsonDecode(entry.value) as List;
+      final list = valueJson.map((item) => fromJson(item as Map<String, dynamic>)).toList();
+      
+      return CacheListResult<T>(
+        data: list,
+        fetchedAt: entry.fetchedAt,
+      );
     } catch (e) {
       // If parsing fails, remove invalid cache asynchronously
       cacheBox.delete(key).catchError((_) {});
@@ -304,6 +348,38 @@ class CacheService {
       }
     }
     return size;
+  }
+
+  /// Clear cache entries matching a pattern (e.g., 'news_headlines_*')
+  static Future<void> clearCacheByPattern(String pattern) async {
+    try {
+      final keysToDelete = <String>[];
+      final prefix = pattern.replaceAll('*', '');
+      
+      for (var key in cacheBox.keys) {
+        final keyStr = key.toString();
+        if (keyStr.startsWith(prefix)) {
+          keysToDelete.add(keyStr);
+        }
+      }
+      
+      for (var key in keysToDelete) {
+        await cacheBox.delete(key).catchError((_) {});
+      }
+    } catch (e) {
+      // Silently fail
+    }
+  }
+
+  /// Get cache entry metadata (for debugging/inspection)
+  static CacheEntry? getCacheEntry(String key) {
+    try {
+      final entryJson = cacheBox.get(key);
+      if (entryJson == null) return null;
+      return CacheEntry.fromJson(Map<String, dynamic>.from(entryJson as Map));
+    } catch (e) {
+      return null;
+    }
   }
 }
 

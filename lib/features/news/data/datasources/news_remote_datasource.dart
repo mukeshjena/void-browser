@@ -27,12 +27,27 @@ class NewsRemoteDataSourceImpl implements NewsRemoteDataSource {
       );
 
       if (response.statusCode == 200) {
-        final articles = (response.data['articles'] as List)
-            .map((json) => NewsArticleModel.fromJson(json))
+        final articlesData = response.data['articles'];
+        if (articlesData == null || articlesData is! List) {
+          return [];
+        }
+        
+        final articles = (articlesData as List)
+            .where((json) => json != null && json is Map<String, dynamic>)
+            .map((json) {
+              try {
+                return NewsArticleModel.fromJson(json as Map<String, dynamic>);
+              } catch (e) {
+                // Skip invalid articles
+                return null;
+              }
+            })
+            .whereType<NewsArticleModel>()
+            .where((article) => article.url.isNotEmpty && article.title.isNotEmpty)
             .toList();
         return articles;
       } else {
-        throw Exception('Failed to load news');
+        throw Exception('Failed to load news: ${response.statusCode}');
       }
     } catch (e) {
       throw Exception('Error fetching news: $e');

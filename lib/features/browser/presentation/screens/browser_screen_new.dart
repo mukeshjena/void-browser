@@ -14,6 +14,8 @@ import '../../../settings/presentation/providers/settings_provider.dart';
 import '../../../reader_mode/presentation/screens/reader_mode_screen.dart';
 import '../providers/desktop_mode_provider.dart';
 import '../../../../core/constants/api_constants.dart';
+import '../widgets/qr_code_dialog.dart';
+import '../widgets/screenshot_dialog.dart';
 
 /// Simple browser screen with Chrome-like UX
 /// - No tabs, just a single WebView
@@ -266,6 +268,95 @@ class _BrowserScreenFullPageState extends ConsumerState<BrowserScreenFullPage> {
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(content: Text('✓ Link copied to clipboard')),
+                                );
+                              }
+                            }
+                          },
+                        ),
+                        _buildBrowserMenuItem(
+                          context,
+                          icon: Icons.qr_code,
+                          title: 'Generate QR Code',
+                          onTap: () {
+                            Navigator.pop(context);
+                            showDialog(
+                              context: context,
+                              builder: (context) => QRCodeDialog(
+                                initialUrl: _currentUrl.isNotEmpty ? _currentUrl : null,
+                                title: _currentTitle,
+                              ),
+                            );
+                          },
+                        ),
+                        _buildBrowserMenuItem(
+                          context,
+                          icon: Icons.camera_alt,
+                          title: 'Take Screenshot',
+                          onTap: () async {
+                            Navigator.pop(context);
+                            
+                            // Don't allow screenshots of discover page
+                            if (_currentUrl.isEmpty || _currentUrl == 'discover') {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Screenshot not available for this page'),
+                                  ),
+                                );
+                              }
+                              return;
+                            }
+
+                            // Show loading indicator
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      ),
+                                      SizedBox(width: 12),
+                                      Text('Capturing screenshot...'),
+                                    ],
+                                  ),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            }
+
+                            try {
+                              // Get webview controller
+                              if (_webViewController == null) {
+                                throw Exception('WebView not available');
+                              }
+
+                              // Take screenshot
+                              final screenshot = await _webViewController!.takeScreenshot();
+                              if (screenshot == null) {
+                                throw Exception('Failed to capture screenshot');
+                              }
+
+                              // Show screenshot dialog with share and save options
+                              if (mounted) {
+                                showDialog(
+                                  context: context,
+                                  builder: (context) => ScreenshotDialog(
+                                    screenshotData: screenshot,
+                                    url: _currentUrl,
+                                    title: _currentTitle,
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Failed to capture screenshot: ${e.toString()}'),
+                                    backgroundColor: Colors.red,
+                                  ),
                                 );
                               }
                             }

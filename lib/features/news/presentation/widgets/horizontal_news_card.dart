@@ -54,6 +54,8 @@ class HorizontalNewsCard extends ConsumerWidget {
                 fadeOutDuration: const Duration(milliseconds: 100),
                 memCacheWidth: 600, // Limit memory cache size
                 memCacheHeight: 400,
+                maxWidthDiskCache: 1200,
+                maxHeightDiskCache: 800,
                 placeholder: (context, url) => Container(
                   color: theme.colorScheme.surfaceVariant,
                   child: const Center(child: CircularProgressIndicator()),
