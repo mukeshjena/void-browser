@@ -357,6 +357,11 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
       url = '${ApiConstants.googleSearchUrl}${Uri.encodeComponent(input)}';
     }
 
+    // Prevent duplicate loads - check if we're already loading this URL
+    if (_currentUrl == url && _isLoading) {
+      return; // Already loading this URL, skip
+    }
+
     await webViewController?.loadUrl(
       urlRequest: URLRequest(url: WebUri(url)),
     );
@@ -541,20 +546,31 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
                   // Performance optimizations
                   cacheEnabled: true,
                   clearCache: false, // Don't clear cache on each load
+                  // Additional performance optimizations for faster loading
+                  thirdPartyCookiesEnabled: true, // Enable third-party cookies for better compatibility
+                  mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW, // Allow mixed content for faster loading
+                  allowsLinkPreview: false, // Disable link preview for better performance
+                  // Android-specific performance settings
+                  hardwareAcceleration: true, // Enable hardware acceleration
+                  // Reduce text size for better performance (will be overridden by viewport)
+                  textZoom: 100, // 100% text zoom
+                  // Optimize rendering
+                  transparentBackground: false, // Opaque background for better performance
+                  // Disable unnecessary features for performance
+                  disableHorizontalScroll: false,
+                  disableVerticalScroll: false,
+                  // Cache mode for better performance
+                  cacheMode: CacheMode.LOAD_DEFAULT, // Use default cache mode
                 ),
-                // Inject ad-blocking scripts at multiple lifecycle stages for maximum effectiveness
-                // Combined approach: Use both content blockers and JavaScript
+                // Inject ad-blocking script once at document start for better performance
+                // Single injection is more efficient than multiple injections
                 initialUserScripts: isAdBlockEnabled && adBlockingJS.isNotEmpty
                     ? UnmodifiableListView([
                         // Inject at document start (earliest possible - before page loads)
+                        // Single injection is sufficient and more performant
                         UserScript(
                           source: adBlockingJS,
                           injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-                        ),
-                        // Also inject at document end (after DOM is ready)
-                        UserScript(
-                          source: adBlockingJS,
-                          injectionTime: UserScriptInjectionTime.AT_DOCUMENT_END,
                         ),
                       ])
                     : null,
@@ -564,27 +580,24 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
               // This will be applied when the page loads
             },
             onLoadStart: (controller, url) async {
+              // Update URL immediately for instant feedback in search bar
+              final urlString = url.toString();
+              _currentUrl = urlString;
+              
+              // Notify parent immediately for instant URL update in search bar
+              widget.onUrlChanged?.call(urlString);
+              
               if (mounted) {
                 setState(() {
                   _isLoading = true;
-                  _currentUrl = url.toString();
                 });
               }
-              widget.onUrlChanged?.call(url.toString());
+              
+              // Update navigation state asynchronously to avoid blocking
               _updateNavigationState();
               
-              // Inject ad blocking script immediately on load start (fallback)
-              if (isAdBlockEnabled && adBlockingJS.isNotEmpty) {
-                try {
-                  final urlStr = url.toString().toLowerCase();
-                  if (urlStr.contains('youtube.com') || urlStr.contains('youtu.be')) {
-                    // Inject immediately for YouTube
-                    await controller.evaluateJavascript(source: adBlockingJS);
-                  }
-                } catch (e) {
-                  // Ignore errors - script might already be injected
-                }
-              }
+              // Note: Ad blocking script is injected via initialUserScripts at document start
+              // No need for redundant injection here - improves performance
             },
             shouldOverrideUrlLoading: (controller, navigationAction) async {
               // OPTIMIZED: Block ad URLs at the network level with error handling
@@ -634,33 +647,21 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
               return NavigationActionPolicy.ALLOW;
             },
             onLoadStop: (controller, url) async {
+              // URL is already updated in onLoadStart for instant feedback
+              // Only update loading state here
               if (mounted) {
                 setState(() {
                   _isLoading = false;
-                  _currentUrl = url.toString();
                 });
               }
               pullToRefreshController?.endRefreshing();
               
-              // Reinject ad blocking script after page load (ensures it's active)
-              if (isAdBlockEnabled && adBlockingJS.isNotEmpty) {
-                try {
-                  final urlStr = url.toString().toLowerCase();
-                  if (urlStr.contains('youtube.com') || urlStr.contains('youtu.be')) {
-                    // Small delay to ensure DOM is ready
-                    await Future.delayed(const Duration(milliseconds: 100));
-                    await controller.evaluateJavascript(source: adBlockingJS);
-                  }
-                } catch (e) {
-                  // Ignore errors
-                }
-              }
+              // Get title and update navigation state asynchronously
               _currentTitle = await controller.getTitle() ?? '';
               _updateNavigationState();
-              widget.onUrlChanged?.call(url.toString());
               
-              // Note: JavaScript is injected via initialUserScripts, no need to inject here
-              // This reduces redundant injections and improves performance
+              // Note: Ad blocking script is injected via initialUserScripts at document start
+              // No redundant injection needed - improves performance and prevents double-loading feeling
               
               // Ensure viewport meta tag allows zooming and respects desktop mode
               try {
@@ -714,11 +715,11 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
                 pullToRefreshController?.endRefreshing();
               }
               
-              // Throttle progress updates to reduce rebuilds (update max every 200ms)
-              // More aggressive throttling for better performance
+              // Aggressive throttling: Update progress max every 300ms for better performance
+              // Only update immediately at 0% and 100% for instant feedback
               final now = DateTime.now();
               if (_lastProgressUpdate == null || 
-                  now.difference(_lastProgressUpdate!).inMilliseconds > 200 ||
+                  now.difference(_lastProgressUpdate!).inMilliseconds > 300 ||
                   progress == 100 || progress == 0) {
                 _lastProgressUpdate = now;
                 if (mounted) {

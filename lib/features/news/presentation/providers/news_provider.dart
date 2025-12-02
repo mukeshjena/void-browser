@@ -76,7 +76,7 @@ class NewsNotifier extends StateNotifier<NewsState> {
 
   Future<void> _loadCachedState() async {
     // Load cache asynchronously to avoid blocking initialization
-    scheduleMicrotask(() async {
+    Future.microtask(() async {
       try {
         // Load last selected category from preferences
         final lastCategory = _prefs.getString(StorageConstants.keyNewsLastCategory) ?? 'general';

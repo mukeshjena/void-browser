@@ -16,6 +16,9 @@ dependencies:
   
   # HTTP Client - REQUIRED for API calls
   dio: ^5.4.0
+
+  # XML Parser - REQUIRED for RSS parsing
+  xml: ^6.5.0
   
   # Local Storage - REQUIRED
   hive: ^2.2.3
