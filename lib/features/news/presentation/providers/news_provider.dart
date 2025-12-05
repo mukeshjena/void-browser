@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/datasources/news_remote_datasource.dart';
 import '../../data/models/news_article_model.dart';
@@ -12,8 +11,7 @@ import '../../../../main.dart';
 
 // Provider for news remote data source
 final newsRemoteDataSourceProvider = Provider<NewsRemoteDataSource>((ref) {
-  final apiKey = dotenv.env['NEWS_API_KEY'] ?? '';
-  return NewsRemoteDataSourceImpl(dio: DioClient.instance, apiKey: apiKey);
+  return NewsRemoteDataSourceImpl(dio: DioClient.instance);
 });
 
 // State for news with pagination
@@ -145,7 +143,7 @@ class NewsNotifier extends StateNotifier<NewsState> {
       error: null,
       currentPage: 1,
       hasMore: true,
-      articles: forceRefresh ? [] : state.articles, // Keep old articles during refresh
+      articles: [], // Clear articles when switching categories or force refresh
     );
 
     try {

@@ -23,9 +23,13 @@ class _AppLifecycleWrapperState extends ConsumerState<AppLifecycleWrapper> with 
   DateTime? _lastPausedTime;
   DateTime? _lastSuccessfulUnlock; // Track when authentication was last successful
   DateTime? _lastLockScreenDismissed; // Track when lock screen was last dismissed
-  static const Duration _gracePeriod = Duration(seconds: 3); // Grace period after successful unlock
+  DateTime? _lastResumedTime; // Track when app last resumed
+  int _rapidPauseResumeCount = 0; // Track rapid pause/resume cycles (system UI overlays)
+  static const Duration _gracePeriod = Duration(seconds: 10); // Increased grace period after successful unlock
   static const Duration _lockDelay = Duration(seconds: 5); // Lock after 5 seconds of being paused
-  static const Duration _dismissCooldown = Duration(seconds: 1); // Cooldown after dismissing lock screen
+  static const Duration _dismissCooldown = Duration(seconds: 2); // Increased cooldown after dismissing lock screen
+  static const Duration _systemOverlayThreshold = Duration(milliseconds: 500); // If pause/resume happens within 500ms, it's likely a system overlay
+  static const int _maxRapidCycles = 3; // Maximum rapid cycles before ignoring them
 
   @override
   void initState() {
@@ -62,11 +66,22 @@ class _AppLifecycleWrapperState extends ConsumerState<AppLifecycleWrapper> with 
       return;
     }
 
+    final now = DateTime.now();
+
     if (state == AppLifecycleState.paused) {
       // App went to background or screen turned off
-      _lastPausedTime = DateTime.now();
+      _lastPausedTime = now;
+      
+      // Reset rapid cycle counter if enough time has passed since last resume
+      if (_lastResumedTime != null) {
+        final timeSinceResume = now.difference(_lastResumedTime!);
+        if (timeSinceResume > _systemOverlayThreshold) {
+          _rapidPauseResumeCount = 0; // Reset counter if it's been a while
+        }
+      }
     } else if (state == AppLifecycleState.resumed) {
       // App came to foreground or screen turned on
+      _lastResumedTime = now;
       
       // Don't show lock screen if already showing or just dismissed
       if (_isLocked || _isShowingLockScreen) {
@@ -75,7 +90,7 @@ class _AppLifecycleWrapperState extends ConsumerState<AppLifecycleWrapper> with 
 
       // Check if lock screen was just dismissed (cooldown period)
       if (_lastLockScreenDismissed != null) {
-        final timeSinceDismiss = DateTime.now().difference(_lastLockScreenDismissed!);
+        final timeSinceDismiss = now.difference(_lastLockScreenDismissed!);
         if (timeSinceDismiss < _dismissCooldown) {
           return;
         }
@@ -83,29 +98,63 @@ class _AppLifecycleWrapperState extends ConsumerState<AppLifecycleWrapper> with 
 
       // Check if we're in grace period (just unlocked)
       if (_lastSuccessfulUnlock != null) {
-        final timeSinceUnlock = DateTime.now().difference(_lastSuccessfulUnlock!);
+        final timeSinceUnlock = now.difference(_lastSuccessfulUnlock!);
         if (timeSinceUnlock < _gracePeriod) {
           // Still in grace period, don't lock again
           return;
         }
       }
 
+      // Detect system overlay (notification drawer, popups) - rapid pause/resume cycles
+      if (_lastPausedTime != null) {
+        final pauseDuration = now.difference(_lastPausedTime!);
+        
+        // If pause/resume happened very quickly, it's likely a system overlay
+        if (pauseDuration < _systemOverlayThreshold) {
+          _rapidPauseResumeCount++;
+          
+          // If we've had multiple rapid cycles, ignore them (system UI overlays)
+          if (_rapidPauseResumeCount >= _maxRapidCycles) {
+            // Reset pause time to prevent locking
+            _lastPausedTime = null;
+            return; // Don't show lock screen for system overlays
+          }
+          
+          // For first few rapid cycles, still check but be more lenient
+          // Only lock if it's been a significant pause AND not in grace period
+          if (pauseDuration < Duration(milliseconds: 200)) {
+            // Very rapid (definitely system overlay), ignore
+            _lastPausedTime = null;
+            return;
+          }
+        } else {
+          // Normal pause duration, reset rapid cycle counter
+          _rapidPauseResumeCount = 0;
+        }
+      } else {
+        // No pause time recorded - this shouldn't normally happen
+        // But if it does, don't lock unless we're sure user left the app
+        // Check if we recently resumed (within last second) - if so, ignore
+        if (_lastResumedTime != null) {
+          final timeSinceLastResume = now.difference(_lastResumedTime!);
+          if (timeSinceLastResume < Duration(seconds: 1)) {
+            // Just resumed recently, likely a system overlay, don't lock
+            return;
+          }
+        }
+      }
+
       // Check if we should lock based on pause duration
       if (_lastPausedTime != null) {
-        final timeSincePause = DateTime.now().difference(_lastPausedTime!);
+        final timeSincePause = now.difference(_lastPausedTime!);
         // Lock if app was paused for more than 5 seconds
         if (timeSincePause >= _lockDelay) {
           _showLockScreen();
         }
-      } else {
-        // If no pause time recorded but app resumed, check if we should lock
-        // This handles cases where screen was turned off/on quickly
-        // Only lock if not in grace period
-        if (_lastSuccessfulUnlock == null || 
-            DateTime.now().difference(_lastSuccessfulUnlock!) >= _gracePeriod) {
-          _showLockScreen();
-        }
+        // Reset pause time after checking
+        _lastPausedTime = null;
       }
+      // Removed the else block that was causing issues - only lock if we have a valid pause time
     }
   }
 

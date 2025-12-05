@@ -35,6 +35,24 @@ class VoidBrowserApp extends ConsumerWidget {
             theme: AppTheme.lightTheme,
             darkTheme: AppTheme.darkTheme,
             themeMode: themeMode,
+            // Performance optimizations
+            builder: (context, child) {
+              return MediaQuery(
+                // Use device pixel ratio for better performance
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: MediaQuery.of(context).textScaler.clamp(
+                    minScaleFactor: 0.8,
+                    maxScaleFactor: 1.2,
+                  ),
+                ),
+                child: RepaintBoundary(
+                  child: child!,
+                ),
+              );
+            },
+            // Optimize page transitions for faster animations
+            themeAnimationDuration: const Duration(milliseconds: 150),
+            themeAnimationCurve: Curves.easeOut,
             home: const AppLifecycleWrapper(
               child: MainScreen(),
             ),

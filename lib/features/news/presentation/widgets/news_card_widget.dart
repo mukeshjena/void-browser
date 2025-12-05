@@ -38,7 +38,7 @@ class NewsCardWidget extends ConsumerWidget {
     if (isFullWidth) {
       return RepaintBoundary(
         child: Card(
-        elevation: 2,
+        elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
@@ -59,8 +59,8 @@ class NewsCardWidget extends ConsumerWidget {
                   child: CachedNetworkImage(
                     imageUrl: article.imageUrl!,
                     fit: BoxFit.cover,
-                    fadeInDuration: const Duration(milliseconds: 200),
-                    fadeOutDuration: const Duration(milliseconds: 100),
+                    fadeInDuration: const Duration(milliseconds: 150),
+                    fadeOutDuration: const Duration(milliseconds: 50),
                     memCacheWidth: 400, // Limit memory cache size
                     maxWidthDiskCache: 800, // Limit disk cache size
                     maxHeightDiskCache: 600,
@@ -169,8 +169,8 @@ class NewsCardWidget extends ConsumerWidget {
                 CachedNetworkImage(
                   imageUrl: article.imageUrl!,
                   fit: BoxFit.cover,
-                  fadeInDuration: const Duration(milliseconds: 200),
-                  fadeOutDuration: const Duration(milliseconds: 100),
+                  fadeInDuration: const Duration(milliseconds: 150),
+                  fadeOutDuration: const Duration(milliseconds: 50),
                   memCacheWidth: 400,
                   placeholder: (context, url) => Container(
                     color: theme.colorScheme.surfaceVariant,

@@ -71,9 +71,13 @@ class _ChromeSearchBarState extends State<ChromeSearchBar> {
   void _checkSecure() {
     // Check both the controller text and the currentUrl prop
     final text = widget.currentUrl ?? _controller.text;
-    setState(() {
-      _isSecure = text.startsWith('https://');
-    });
+    final newIsSecure = text.startsWith('https://');
+    // Only call setState if security status actually changed (prevents unnecessary rebuilds)
+    if (_isSecure != newIsSecure) {
+      setState(() {
+        _isSecure = newIsSecure;
+      });
+    }
   }
 
   void _showExpandedSearchBar() {
@@ -99,10 +103,14 @@ class _ChromeSearchBarState extends State<ChromeSearchBar> {
         ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(
-            opacity: animation,
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOut,
+            ),
             child: child,
           );
         },
+        transitionDuration: const Duration(milliseconds: 150),
       ),
     ).then((_) {
       // Notify parent that overlay was dismissed

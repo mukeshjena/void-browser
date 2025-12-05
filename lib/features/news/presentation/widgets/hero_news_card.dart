@@ -29,13 +29,13 @@ class HeroNewsCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     
-    return Card(
-      elevation: 4,
-      shadowColor: Colors.black.withOpacity(0.2),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
-      clipBehavior: Clip.antiAlias,
+    return RepaintBoundary(
+      child: Card(
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () {
           if (article.url.isNotEmpty && article.url != 'discover') {
@@ -46,12 +46,13 @@ class HeroNewsCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Large hero image
-            Stack(
-              children: [
-                if (article.imageUrl != null)
-                  AspectRatio(
-                    aspectRatio: 16 / 10,
-                    child: CachedNetworkImage(
+            AspectRatio(
+              aspectRatio: 16 / 10,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (article.imageUrl != null)
+                    CachedNetworkImage(
                       imageUrl: article.imageUrl!,
                       fit: BoxFit.cover,
                       memCacheWidth: 600,
@@ -66,45 +67,43 @@ class HeroNewsCard extends ConsumerWidget {
                         color: theme.colorScheme.surfaceVariant,
                         child: const Center(child: Icon(Icons.article, size: 48)),
                       ),
+                    )
+                  else
+                    Container(
+                      color: theme.colorScheme.surfaceVariant,
+                      child: const Center(child: Icon(Icons.article, size: 48)),
                     ),
-                  ),
-                // Gradient overlay for "Featured" badge
-                Positioned(
-                  top: 16,
-                  left: 16,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFFF6B6B), Color(0xFFFF8E53)],
+                  // Gradient overlay for "Featured" badge
+                  Positioned(
+                    top: 16,
+                    left: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFF6B6B), Color(0xFFFF8E53)],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.local_fire_department, color: Colors.white, size: 16),
-                        SizedBox(width: 4),
-                        Text(
-                          'Featured',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.local_fire_department, color: Colors.white, size: 16),
+                          SizedBox(width: 4),
+                          Text(
+                            'Featured',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             
             // Content
@@ -202,6 +201,7 @@ class HeroNewsCard extends ConsumerWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }

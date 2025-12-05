@@ -43,7 +43,7 @@ class _ExpandedSearchBarOverlayState extends ConsumerState<ExpandedSearchBarOver
   void initState() {
     super.initState();
     _focusNode = FocusNode();
-    _searchDebouncer = Debouncer(delay: const Duration(milliseconds: 300));
+    _searchDebouncer = Debouncer(delay: const Duration(milliseconds: 200)); // Reduced for faster suggestions
     WidgetsBinding.instance.addObserver(this);
     
     // Listen to focus changes to select all only on first focus

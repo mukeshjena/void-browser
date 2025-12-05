@@ -57,13 +57,6 @@ class _FindInPageOverlayState extends State<FindInPageOverlay> {
     return Container(
       decoration: BoxDecoration(
         color: isDark ? Colors.grey[900] : Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

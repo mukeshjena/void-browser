@@ -1,4 +1,5 @@
 import 'cache_service.dart';
+import 'cache_lifecycle_manager.dart';
 
 /// Cache manager for periodic cleanup and maintenance
 class CacheManager {
@@ -14,6 +15,7 @@ class CacheManager {
       'sizeBytes': size,
       'sizeMB': (size / (1024 * 1024)).toStringAsFixed(2),
       'entryCount': CacheService.cacheBox.length,
+      'lifecycleRunning': CacheLifecycleManager.instance.isRunning,
     };
   }
 
@@ -28,6 +30,13 @@ class CacheManager {
     await CacheService.init();
     // Clean cache older than 7 days
     await cleanOldCache();
+    // Start automatic lifecycle management
+    CacheLifecycleManager.instance.start();
+  }
+
+  /// Stop cache lifecycle management (for cleanup)
+  static void stop() {
+    CacheLifecycleManager.instance.stop();
   }
 }
 

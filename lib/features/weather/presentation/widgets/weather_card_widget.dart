@@ -77,13 +77,6 @@ class _WeatherCardWidgetState extends ConsumerState<WeatherCardWidget> {
               : [const Color(0xFF60A5FA), const Color(0xFF3B82F6)],
         ),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF3B82F6).withOpacity(0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       child: Material(
         color: Colors.transparent,

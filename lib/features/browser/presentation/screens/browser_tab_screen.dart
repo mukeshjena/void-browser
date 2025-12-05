@@ -44,14 +44,16 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
   final Map<String, bool> _isInternalLoad = {}; // Track if we initiated the load (not external)
   final Map<String, List<String>> _navigationHistory = {}; // Track navigation history per tab
   final Map<String, DateTime> _lastScrollUpdate = {}; // Debounce scroll updates
-  final Map<String, DateTime> _lastScrollEventTime = {}; // Track last scroll event time
-  final Map<String, int> _lastSignificantScrollY = {}; // Track last significant scroll position
-  final Map<String, bool> _isScrolling = {}; // Track if actively scrolling
-  static const int _scrollThreshold = 30; // Increased threshold to prevent flickering
-  static const int _scrollDebounceMs = 200; // Debounce time for scroll updates
-  static const int _scrollStopDelayMs = 400; // Time to wait before considering scroll stopped
-  static const int _minStateChangeIntervalMs = 600; // Minimum time between appbar state changes
-  static const int _debounceMs = 1000; // Debounce time for URL loading (1 second)
+  final Map<String, int> _scrollDirection = {}; // Track scroll direction (1 = down, -1 = up, 0 = none)
+  final Map<String, int> _scrollAccumulator = {}; // Accumulate scroll delta to prevent flickering
+  final Map<String, DateTime> _lastStateChange = {}; // Track when app bar state last changed
+  final Map<String, ValueNotifier<bool>> _appBarVisibilityNotifiers = {}; // Use ValueNotifier for smooth updates
+  static const int _scrollThreshold = 25; // Minimum scroll distance before changing state (increased for stability)
+  static const int _scrollDebounceMs = 200; // Debounce time for scroll updates (increased for smoothness)
+  static const int _scrollAccumulatorThreshold = 40; // Accumulated scroll needed to change state (increased)
+  static const int _stateChangeCooldownMs = 600; // Cooldown period after state change to prevent flickering
+  static const int _scrollThrottleMs = 16; // Throttle scroll events to ~60fps (16ms = 60fps)
+  static const int _debounceMs = 300; // Debounce time for URL loading (reduced from 1000ms for faster response)
 
   @override
   void dispose() {
@@ -102,81 +104,127 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
     if (isDiscover) {
       // Always show app bar on discover page
       if (_isAppBarVisible[tabId] != true) {
-        setState(() {
-          _isAppBarVisible[tabId] = true;
-        });
+        _isAppBarVisible[tabId] = true;
+        // Ensure ValueNotifier exists
+        if (!_appBarVisibilityNotifiers.containsKey(tabId)) {
+          _appBarVisibilityNotifiers[tabId] = ValueNotifier<bool>(true);
+        } else {
+          _appBarVisibilityNotifiers[tabId]!.value = true;
+        }
       }
       return;
     }
     
     final now = DateTime.now();
     final lastUpdate = _lastScrollUpdate[tabId];
-    final lastScrollEventTime = _lastScrollEventTime[tabId];
     final lastScrollY = _lastScrollY[tabId] ?? 0;
-    final lastSignificantScrollY = _lastSignificantScrollY[tabId] ?? y;
+    final lastStateChange = _lastStateChange[tabId];
     
-    // Calculate scroll delta
-    final delta = y - lastScrollY;
-    final significantDelta = y - lastSignificantScrollY;
-    
-    // Check if we have significant movement
-    final hasSignificantMovement = significantDelta.abs() >= _scrollThreshold;
-    
-    // Update tracking variables
-    _lastScrollEventTime[tabId] = now;
-    _lastScrollY[tabId] = y;
-    
-    // If we have significant movement, mark as scrolling and update significant position
-    if (hasSignificantMovement) {
-      _isScrolling[tabId] = true;
-      _lastSignificantScrollY[tabId] = y;
-    } else {
-      // Small movement - check if scroll has stopped
-      if (lastScrollEventTime != null) {
-        final timeSinceLastSignificantMovement = now.difference(lastScrollEventTime).inMilliseconds;
-        if (timeSinceLastSignificantMovement > _scrollStopDelayMs) {
-          // Scroll has stopped - lock the current appbar state
-          _isScrolling[tabId] = false;
-          // Don't process any state changes when scroll is stopped
-          return;
-        }
-      }
-    }
-    
-    // If not actively scrolling, don't change appbar state
-    if (_isScrolling[tabId] != true) {
+    // CRITICAL: Throttle scroll events to ~60fps to reduce lag
+    if (lastUpdate != null && now.difference(lastUpdate).inMilliseconds < _scrollThrottleMs) {
       return;
     }
+    _lastScrollUpdate[tabId] = now;
     
-    // Debounce scroll updates to reduce setState calls
-    if (lastUpdate != null && now.difference(lastUpdate).inMilliseconds < _scrollDebounceMs) {
-      return;
-    }
-    
-    // Only react to significant scroll changes to prevent flickering
-    if (delta.abs() < _scrollThreshold) {
-      return;
-    }
-    
-    // Prevent rapid state changes - enforce minimum interval between changes
-    if (lastUpdate != null) {
-      final timeSinceLastChange = now.difference(lastUpdate).inMilliseconds;
-      if (timeSinceLastChange < _minStateChangeIntervalMs) {
-        // Too soon to change state again
+    // CRITICAL: Prevent state changes too soon after last change (cooldown period)
+    if (lastStateChange != null) {
+      final timeSinceLastChange = now.difference(lastStateChange).inMilliseconds;
+      if (timeSinceLastChange < _stateChangeCooldownMs) {
+        // Still in cooldown, ignore scroll events to prevent flickering
         return;
       }
     }
     
+    // Calculate scroll delta (positive = scrolling down, negative = scrolling up)
+    final delta = y - lastScrollY;
+    
+    // Update tracking variables
+    _lastScrollY[tabId] = y;
+    
+    // Ignore very small movements to prevent micro-adjustments from causing flickering
+    if (delta.abs() < 8) {
+      return;
+    }
+    
+    // Determine current scroll direction
+    int currentDirection = 0;
+    if (delta > _scrollThreshold) {
+      currentDirection = 1; // Scrolling down
+    } else if (delta < -_scrollThreshold) {
+      currentDirection = -1; // Scrolling up
+    } else {
+      // Movement below threshold, maintain previous direction but don't accumulate
+      currentDirection = _scrollDirection[tabId] ?? 0;
+      // Don't process further if movement is too small
+      if (currentDirection == 0) {
+        return;
+      }
+    }
+    
+    // Update scroll direction
+    final previousDirection = _scrollDirection[tabId] ?? 0;
+    _scrollDirection[tabId] = currentDirection;
+    
+    // Accumulate scroll delta in the same direction to prevent flickering
+    int accumulator = _scrollAccumulator[tabId] ?? 0;
+    
+    if (currentDirection != 0) {
+      // If direction changed, reset accumulator immediately
+      if (currentDirection != previousDirection && previousDirection != 0) {
+        accumulator = 0;
+      }
+      
+      // Only accumulate if direction is consistent
+      if (currentDirection == previousDirection || previousDirection == 0) {
+        accumulator += delta.abs();
+        _scrollAccumulator[tabId] = accumulator;
+      } else {
+        // Direction changed, reset
+        accumulator = 0;
+        _scrollAccumulator[tabId] = 0;
+      }
+    } else {
+      // No significant movement, gradually reduce accumulator
+      accumulator = (accumulator * 0.7).round();
+      if (accumulator < 5) {
+        accumulator = 0;
+      }
+      _scrollAccumulator[tabId] = accumulator;
+    }
+    
+    // Additional debounce for state changes (separate from throttle)
+    final lastStateUpdate = _lastStateChange[tabId];
+    if (lastStateUpdate != null && now.difference(lastStateUpdate).inMilliseconds < _scrollDebounceMs) {
+      return;
+    }
+    
+    // Only change state if we have accumulated enough scroll in one direction
+    // This prevents flickering when holding scroll position
+    if (accumulator < _scrollAccumulatorThreshold) {
+      return;
+    }
+    
     // Determine if app bar should be visible (show when scrolling up, hide when scrolling down)
-    final shouldShow = delta < 0; // Negative delta means scrolling up
+    // Chrome behavior: hide when scrolling down, show when scrolling up
+    final shouldShow = currentDirection < 0; // Negative direction means scrolling up
     final currentlyVisible = _isAppBarVisible[tabId] ?? true;
     
-    // Only update if state actually changed and we have significant movement
-    if (shouldShow != currentlyVisible && delta.abs() >= _scrollThreshold && mounted) {
-      _lastScrollUpdate[tabId] = now;
-      setState(() {
-        _isAppBarVisible[tabId] = shouldShow;
-      });
+    // Only update if state actually changed
+    if (shouldShow != currentlyVisible && mounted) {
+      _lastStateChange[tabId] = now; // Track when state changed
+      // Reset accumulator after state change to prevent immediate reversal
+      _scrollAccumulator[tabId] = 0;
+      // Reset scroll direction to prevent immediate re-triggering
+      _scrollDirection[tabId] = 0;
+      
+      // Ensure ValueNotifier exists before updating
+      if (!_appBarVisibilityNotifiers.containsKey(tabId)) {
+        _appBarVisibilityNotifiers[tabId] = ValueNotifier<bool>(shouldShow);
+      }
+      
+      // Update state using ValueNotifier for smoother updates
+      _isAppBarVisible[tabId] = shouldShow;
+      _appBarVisibilityNotifiers[tabId]!.value = shouldShow;
     }
   }
 
@@ -239,26 +287,37 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
       }
     }
 
-    // Update state
-    setState(() {
-      _currentUrls[tabId] = url;
-      if (_urlControllers[tabId] != null) {
-        _urlControllers[tabId]!.text = url;
+    // Update URL controller text IMMEDIATELY for instant feedback (no setState needed)
+    if (_urlControllers[tabId] != null) {
+      _urlControllers[tabId]!.text = url;
+    }
+    _currentUrls[tabId] = url; // Update immediately to prevent duplicate loads
+
+    // Update state asynchronously to avoid blocking UI
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          // State already updated above, just trigger rebuild
+        });
       }
     });
 
     // Load URL in WebView if it exists, otherwise update tab (will create WebView)
     if (_webViewControllers[tabId] != null) {
+      // Load URL immediately - WebView's loadUrl has its own duplicate prevention
       _webViewControllers[tabId]!.loadUrl(url);
     }
+    
+    // Update tab provider AFTER setting flags to prevent external update check from loading again
+    // The _isInternalLoad flag will prevent the external update check from triggering
     ref.read(tabsProvider.notifier).updateTab(tabId: tabId, url: url);
     
-    // Reset loading flag after a delay
-    Future.delayed(const Duration(milliseconds: 500), () {
+    // Reset loading flag quickly (reduced delay for faster response)
+    Future.delayed(const Duration(milliseconds: 200), () {
       if (mounted) {
         _isLoadingUrl[tabId] = false;
-        // Reset internal load flag after a bit longer to prevent rebuild triggers
-        Future.delayed(const Duration(milliseconds: 300), () {
+        // Keep _isInternalLoad true a bit longer to prevent external update check
+        Future.delayed(const Duration(milliseconds: 100), () {
           if (mounted) {
             _isInternalLoad[tabId] = false;
           }
@@ -274,15 +333,17 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
       barrierDismissible: true,
       barrierLabel: 'Menu',
       barrierColor: Colors.black54,
-      transitionDuration: const Duration(milliseconds: 200),
+      transitionDuration: const Duration(milliseconds: 150),
       pageBuilder: (context, animation, secondaryAnimation) {
         return Align(
           alignment: Alignment.topRight,
           child: Material(
             color: Colors.transparent,
             child: Container(
-              width: 280,
-              height: MediaQuery.of(context).size.height * 0.85,
+              width: 240,
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.85,
+              ),
               margin: EdgeInsets.only(
                 top: MediaQuery.of(context).padding.top + 10,
                 right: 8,
@@ -291,18 +352,13 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF2D2D2D) : Colors.white,
                 borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: 10,
-                    offset: const Offset(-2, 0),
-                  ),
-                ],
               ),
+              clipBehavior: Clip.hardEdge,
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
                     decoration: BoxDecoration(
                       border: Border(
                         bottom: BorderSide(
@@ -363,9 +419,11 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
                       ],
                     ),
                   ),
-                  Expanded(
+                  Flexible(
                     child: ListView(
                       padding: EdgeInsets.zero,
+                      shrinkWrap: true,
+                      physics: const ClampingScrollPhysics(),
                       children: [
                         _buildBrowserMenuItem(
                           context,
@@ -745,7 +803,7 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
             end: Offset.zero,
           ).animate(CurvedAnimation(
             parent: animation,
-            curve: Curves.easeOutCubic,
+            curve: Curves.easeOut,
           )),
           child: child,
         );
@@ -762,9 +820,9 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Icon(icon, size: 28),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Icon(icon, size: 20),
       ),
     );
   }
@@ -886,11 +944,13 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
   @override
   Widget build(BuildContext context) {
     // Use select to only watch specific fields to reduce rebuilds
-    final activeTab = ref.watch(tabsProvider.select((state) => state.activeTab));
-    final tabCount = ref.watch(tabsProvider.select((state) => state.tabCount));
+    final tabsState = ref.watch(tabsProvider);
+    final activeTab = tabsState.activeTab;
+    final allTabs = tabsState.tabs;
+    final tabCount = tabsState.tabCount;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    if (activeTab == null) {
+    if (activeTab == null || allTabs.isEmpty) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
@@ -898,6 +958,9 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
 
     final tabId = activeTab.id;
     final isDiscover = activeTab.url == 'discover';
+    
+    // Find the index of the active tab for IndexedStack
+    final activeTabIndex = allTabs.indexWhere((tab) => tab.id == tabId);
 
     // Initialize controllers for this tab if not exists
     if (!_urlControllers.containsKey(tabId)) {
@@ -905,11 +968,23 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
       _currentUrls[tabId] = activeTab.url;
       _currentTitles[tabId] = activeTab.title;
       _isAppBarVisible[tabId] = true; // Always show app bar initially
+      _appBarVisibilityNotifiers[tabId] = ValueNotifier<bool>(true); // Initialize ValueNotifier
       _navigationHistory[tabId] = [];
     } else {
       // Ensure app bar is visible on discover page
       if (isDiscover && _isAppBarVisible[tabId] != true) {
         _isAppBarVisible[tabId] = true;
+        // Ensure ValueNotifier exists and update it
+        if (!_appBarVisibilityNotifiers.containsKey(tabId)) {
+          _appBarVisibilityNotifiers[tabId] = ValueNotifier<bool>(true);
+        } else {
+          _appBarVisibilityNotifiers[tabId]!.value = true;
+        }
+      }
+      
+      // Ensure ValueNotifier exists for all tabs (even if not discover)
+      if (!_appBarVisibilityNotifiers.containsKey(tabId)) {
+        _appBarVisibilityNotifiers[tabId] = ValueNotifier<bool>(_isAppBarVisible[tabId] ?? true);
       }
       // Update controller text when switching tabs to show current tab's URL
       // Also handle case where tab URL changes from "discover" to a real URL
@@ -926,58 +1001,68 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
       // Check if tab URL was updated externally (e.g., from TabUtils)
       // This handles the case where URL changes from "discover" to a real URL
       // OR when URL changes from one real URL to another (e.g., clicking news after browsing)
+      // IMPORTANT: Only load if this is NOT an internal load (to prevent duplicate loads)
+      // AND if the WebView doesn't already have this URL loaded (to prevent reloading when switching tabs)
       if (activeTab.url != 'discover' && 
-          activeTab.url != _currentUrls[tabId]) {
-        // For external updates (from TabUtils), always load regardless of loading state
-        // This ensures news items load even when webview already has a different URL
+          activeTab.url != _currentUrls[tabId] &&
+          _isInternalLoad[tabId] != true && // Skip if we just loaded via _loadUrl
+          _webViewControllers[tabId] != null) { // Only load if WebView exists
+        // For external updates (from TabUtils), load the URL
         if (mounted) {
-          // Clear all loading flags and debounce to force immediate load
-          _isLoadingUrl[tabId] = false;
-          _lastLoadedUrl[tabId] = ''; // Clear to allow immediate load
-          _lastLoadTime.remove(tabId); // Clear debounce
-          _isInternalLoad[tabId] = false; // Mark as external load
-          
-          // Load URL in WebView if it exists, otherwise it will be loaded when WebView is created
-          if (_webViewControllers[tabId] != null) {
-            // Format URL properly
-            String formattedUrl = activeTab.url;
-            if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
-              if (formattedUrl.contains('.') && !formattedUrl.contains(' ')) {
-                formattedUrl = 'https://$formattedUrl';
-              }
+          // Format URL properly
+          String formattedUrl = activeTab.url;
+          if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+            if (formattedUrl.contains('.') && !formattedUrl.contains(' ')) {
+              formattedUrl = 'https://$formattedUrl';
             }
+          }
+          
+          // Prevent duplicate load - check if we're already loading this exact URL
+          if (!(_isLoadingUrl[tabId] == true && _lastLoadedUrl[tabId] == formattedUrl)) {
+            // Mark as external load to prevent _loadUrl from loading again
+            _isInternalLoad[tabId] = false;
+            _isLoadingUrl[tabId] = true;
+            _lastLoadedUrl[tabId] = formattedUrl;
+            _lastLoadTime[tabId] = DateTime.now();
             
-            // Load directly in webview (bypass _loadUrl checks)
-            _webViewControllers[tabId]!.loadUrl(formattedUrl);
+            // Update controller text immediately
+            if (_urlControllers[tabId] != null) {
+              _urlControllers[tabId]!.text = formattedUrl;
+            }
+            _currentUrls[tabId] = formattedUrl;
             
-            // Update state after loading
-            setState(() {
-              _currentUrls[tabId] = formattedUrl;
-              if (_urlControllers[tabId] != null) {
-                _urlControllers[tabId]!.text = formattedUrl;
-              }
-              _isLoadingUrl[tabId] = true; // Mark as loading
-              _lastLoadedUrl[tabId] = formattedUrl;
-              _lastLoadTime[tabId] = DateTime.now();
-            });
-            
-            // Reset loading flag after a delay
-            Future.delayed(const Duration(milliseconds: 500), () {
-              if (mounted) {
-                setState(() {
+            // Load URL in WebView if it exists, otherwise it will be loaded when WebView is created
+            if (_webViewControllers[tabId] != null) {
+              _webViewControllers[tabId]!.loadUrl(formattedUrl);
+              
+              // Update state asynchronously
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  setState(() {
+                    // State already updated above
+                  });
+                }
+              });
+              
+              // Reset loading flag quickly
+              Future.delayed(const Duration(milliseconds: 200), () {
+                if (mounted) {
                   _isLoadingUrl[tabId] = false;
-                });
-              }
-            });
+                }
+              });
+            } else {
+              // Webview doesn't exist yet, just update the URL state
+              // It will be loaded when webview is created
+              setState(() {
+                _currentUrls[tabId] = formattedUrl;
+              });
+            }
           } else {
-            // Webview doesn't exist yet, just update the URL state
-            // It will be loaded when webview is created
-            setState(() {
-              _currentUrls[tabId] = activeTab.url;
-              if (_urlControllers[tabId] != null) {
-                _urlControllers[tabId]!.text = activeTab.url;
-              }
-            });
+            // Already loading this URL, just update the controller text to ensure it's in sync
+            if (_urlControllers[tabId] != null && _urlControllers[tabId]!.text != formattedUrl) {
+              _urlControllers[tabId]!.text = formattedUrl;
+            }
+            _currentUrls[tabId] = formattedUrl;
           }
         }
       } else if (_isInternalLoad[tabId] == true) {
@@ -1059,14 +1144,20 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
         child: Scaffold(
           body: Column(
           children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeInOut,
-            height: (isDiscover || (_isAppBarVisible[tabId] ?? true)) ? appBarHeight : MediaQuery.of(context).padding.top,
-            child: AnimatedOpacity(
-              duration: const Duration(milliseconds: 200),
-              opacity: (isDiscover || (_isAppBarVisible[tabId] ?? true)) ? 1.0 : 0.0,
-              child: AppBar(
+          ValueListenableBuilder<bool>(
+            valueListenable: _appBarVisibilityNotifiers[tabId]!,
+            builder: (context, isVisible, child) {
+              final shouldShow = isDiscover || isVisible;
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                height: shouldShow ? appBarHeight : MediaQuery.of(context).padding.top,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 150),
+                  curve: Curves.easeOut,
+                  opacity: shouldShow ? 1.0 : 0.0,
+                  child: RepaintBoundary(
+                    child: AppBar(
                 automaticallyImplyLeading: false,
                 titleSpacing: 8,
                 title: ChromeSearchBar(
@@ -1147,17 +1238,41 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
                 ],
                 backgroundColor: isDark ? Colors.black : Colors.white,
                 elevation: 0,
-              ),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
-          ),
           Expanded(
-            child: isDiscover
-                ? const DiscoverScreen()
-                : ChromeWebView(
-                    // Use tabId as key to maintain WebView instance and preserve history
-                    key: ValueKey('webview_$tabId'),
-                    initialUrl: _getValidUrlForWebView(activeTab.url),
-                    onDownloadRequested: (url, filename) async {
+            child: IndexedStack(
+              index: activeTabIndex >= 0 ? activeTabIndex : 0,
+              children: allTabs.map<Widget>((tab) {
+                final currentTabId = tab.id;
+                final currentIsDiscover = tab.url == 'discover';
+                
+                // Initialize controllers for all tabs if not exists
+                if (!_urlControllers.containsKey(currentTabId)) {
+                  _urlControllers[currentTabId] = TextEditingController(
+                    text: currentIsDiscover ? '' : tab.url,
+                  );
+                  _currentUrls[currentTabId] = tab.url;
+                  _currentTitles[currentTabId] = tab.title;
+                  _isAppBarVisible[currentTabId] = true;
+                  if (!_appBarVisibilityNotifiers.containsKey(currentTabId)) {
+                    _appBarVisibilityNotifiers[currentTabId] = ValueNotifier<bool>(true);
+                  }
+                  _navigationHistory[currentTabId] = [];
+                }
+                
+                // Return the appropriate widget for each tab
+                return currentIsDiscover
+                    ? const DiscoverScreen()
+                    : ChromeWebView(
+                        // Use tabId as key to maintain WebView instance and preserve state
+                        key: ValueKey('webview_$currentTabId'),
+                        initialUrl: _getValidUrlForWebView(tab.url),
+                        onDownloadRequested: (url, filename) async {
                       // Handle download request from WebView
                       try {
                         await ref.read(downloadManagerProvider.notifier).startDownload(
@@ -1200,57 +1315,73 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
                       }
                     },
                     onFindResult: (activeMatch, totalMatches) {
-                      if (_findActiveMatches.containsKey(tabId) && _findTotalMatches.containsKey(tabId)) {
-                        _findActiveMatches[tabId]!.value = activeMatch;
-                        _findTotalMatches[tabId]!.value = totalMatches;
+                      if (_findActiveMatches.containsKey(currentTabId) && _findTotalMatches.containsKey(currentTabId)) {
+                        _findActiveMatches[currentTabId]!.value = activeMatch;
+                        _findTotalMatches[currentTabId]!.value = totalMatches;
                       }
                     },
                     onWebViewCreated: (controller) {
-                      _webViewControllers[tabId] = controller;
+                      _webViewControllers[currentTabId] = controller;
                       // Load URL if it was set before WebView was created
-                      // Use activeTab.url to get the most up-to-date URL (might have been updated by TabUtils)
-                      final urlToLoad = activeTab.url;
+                      // Use tab.url to get the most up-to-date URL (might have been updated by TabUtils)
+                      final urlToLoad = tab.url;
                       if (urlToLoad != 'discover' && urlToLoad.isNotEmpty && 
                           urlToLoad != 'http://discover' && urlToLoad != 'https://discover' &&
                           urlToLoad != 'http://discover/' && urlToLoad != 'https://discover/') {
-                        // Update current URL state
-                        if (mounted) {
-                          setState(() {
-                            _currentUrls[tabId] = urlToLoad;
-                            if (_urlControllers[tabId] != null) {
-                              _urlControllers[tabId]!.text = urlToLoad;
+                        // Only load URL if this tab doesn't already have a loaded URL
+                        // This prevents reloading when switching back to a tab
+                        if (_currentUrls[currentTabId] != urlToLoad || 
+                            !_webViewControllers.containsKey(currentTabId)) {
+                          // Update current URL state
+                          if (mounted) {
+                            setState(() {
+                              _currentUrls[currentTabId] = urlToLoad;
+                              if (_urlControllers[currentTabId] != null) {
+                                _urlControllers[currentTabId]!.text = urlToLoad;
+                              }
+                              // Clear loading flags to allow immediate load
+                              _isLoadingUrl[currentTabId] = false;
+                              _lastLoadedUrl[currentTabId] = '';
+                              _lastLoadTime.remove(currentTabId);
+                            });
+                          }
+                          
+                          // Load URL immediately when WebView is created (no delay for faster loading)
+                          // Use microtask to ensure WebView is ready but don't wait
+                          Future.microtask(() {
+                            if (mounted && _webViewControllers[currentTabId] != null) {
+                              // Ensure we're loading the most current URL
+                              final currentTab = ref.read(tabsProvider).tabs.firstWhere(
+                                (t) => t.id == currentTabId,
+                                orElse: () => tab,
+                              );
+                              final currentTabUrl = currentTab.url;
+                              if (currentTabUrl != 'discover' && currentTabUrl.isNotEmpty) {
+                                // Check if we're not already loading this URL to prevent duplicates
+                                if (_lastLoadedUrl[currentTabId] != currentTabUrl || !(_isLoadingUrl[currentTabId] ?? false)) {
+                                  _isLoadingUrl[currentTabId] = true;
+                                  _lastLoadedUrl[currentTabId] = currentTabUrl;
+                                  _lastLoadTime[currentTabId] = DateTime.now();
+                                  
+                                  controller.loadUrl(currentTabUrl);
+                                  
+                                  // Update state to reflect the load
+                                  setState(() {
+                                    _currentUrls[currentTabId] = currentTabUrl;
+                                  });
+                                  
+                                  // Apply saved desktop mode preference after loading
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    final desktopMode = ref.read(desktopModeProvider);
+                                    if (desktopMode) {
+                                      controller.setDesktopMode(desktopMode);
+                                    }
+                                  });
+                                }
+                              }
                             }
-                            // Clear loading flags to allow immediate load
-                            _isLoadingUrl[tabId] = false;
-                            _lastLoadedUrl[tabId] = '';
-                            _lastLoadTime.remove(tabId);
                           });
                         }
-                        
-                        // Load URL immediately when WebView is created
-                        // Use a small delay to ensure WebView is fully initialized
-                        Future.delayed(const Duration(milliseconds: 150), () {
-                          if (mounted && _webViewControllers[tabId] != null) {
-                            // Ensure we're loading the most current URL
-                            final currentTabUrl = ref.read(tabsProvider).activeTab?.url ?? urlToLoad;
-                            if (currentTabUrl != 'discover' && currentTabUrl.isNotEmpty) {
-                              controller.loadUrl(currentTabUrl);
-                              // Update state to reflect the load
-                              setState(() {
-                                _currentUrls[tabId] = currentTabUrl;
-                                _lastLoadedUrl[tabId] = currentTabUrl;
-                                _lastLoadTime[tabId] = DateTime.now();
-                              });
-                              // Apply saved desktop mode preference after loading
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                final desktopMode = ref.read(desktopModeProvider);
-                                if (desktopMode) {
-                                  controller.setDesktopMode(desktopMode);
-                                }
-                              });
-                            }
-                          }
-                        });
                       } else {
                         // Apply saved desktop mode preference even for discover page
                         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1263,57 +1394,88 @@ class _BrowserTabScreenState extends ConsumerState<BrowserTabScreen> {
                     },
                     onUrlChanged: (url) async {
                       // Prevent duplicate updates - check if URL actually changed
-                      if (_currentUrls[tabId] == url) {
-                        _isLoadingUrl[tabId] = false; // Reset loading flag even if URL is same
+                      if (_currentUrls[currentTabId] == url) {
+                        _isLoadingUrl[currentTabId] = false; // Reset loading flag even if URL is same
                         return;
                       }
                       
                       // Debounce: Don't update if this URL was just loaded
-                      final lastLoadTime = _lastLoadTime[tabId];
-                      if (lastLoadTime != null && _lastLoadedUrl[tabId] == url) {
+                      final lastLoadTime = _lastLoadTime[currentTabId];
+                      if (lastLoadTime != null && _lastLoadedUrl[currentTabId] == url) {
                         final timeSinceLastLoad = DateTime.now().difference(lastLoadTime).inMilliseconds;
                         if (timeSinceLastLoad < _debounceMs) {
                           // This is likely the same load, just update state without triggering tab update
-                          if (_urlControllers[tabId] != null && _urlControllers[tabId]!.text != url) {
-                            _urlControllers[tabId]!.text = url;
+                          if (_urlControllers[currentTabId] != null && _urlControllers[currentTabId]!.text != url) {
+                            _urlControllers[currentTabId]!.text = url;
                           }
                           // Update state without setState if only URL controller changed
-                          _currentUrls[tabId] = url;
-                          _isLoadingUrl[tabId] = false;
+                          _currentUrls[currentTabId] = url;
+                          _isLoadingUrl[currentTabId] = false;
                           return;
                         }
                       }
                       
-                      // Update controller text immediately to show current URL (no setState needed)
-                      if (_urlControllers[tabId] != null && _urlControllers[tabId]!.text != url) {
-                        _urlControllers[tabId]!.text = url;
+                      // CRITICAL: Update controller text IMMEDIATELY for instant search bar feedback
+                      // This happens synchronously before any async operations
+                      if (_urlControllers[currentTabId] != null && _urlControllers[currentTabId]!.text != url) {
+                        _urlControllers[currentTabId]!.text = url;
                       }
                       
-                      // Batch state updates - get title first, then update everything in one setState
-                      final title = await _webViewControllers[tabId]?.currentTitle() ?? '';
+                      // Update URL state immediately (no await)
+                      _currentUrls[currentTabId] = url;
+                      _isLoadingUrl[currentTabId] = false;
+                      _lastLoadedUrl[currentTabId] = url;
+                      _lastLoadTime[currentTabId] = DateTime.now();
+                      
                       final isDiscoverUrl = url == 'discover' || url.isEmpty;
+                      
+                      // Update UI state immediately (before title fetch)
                       if (mounted) {
                         setState(() {
-                          _currentUrls[tabId] = url;
-                          _isLoadingUrl[tabId] = false; // Reset loading flag
-                          _lastLoadedUrl[tabId] = url; // Update last loaded URL
-                          _lastLoadTime[tabId] = DateTime.now(); // Update load time
-                          _currentTitles[tabId] = title;
-                          // Ensure app bar is visible on discover page
+                          // State already updated above, just trigger rebuild
                           if (isDiscoverUrl) {
-                            _isAppBarVisible[tabId] = true;
+                            _isAppBarVisible[currentTabId] = true;
                           }
                         });
                       }
                       
-                      ref.read(tabsProvider.notifier).updateTab(
-                            tabId: tabId,
+                      // Fetch title asynchronously AFTER updating URL (non-blocking)
+                      // This prevents title fetch from delaying search bar update
+                      _webViewControllers[currentTabId]?.currentTitle().then((title) {
+                        if (mounted && _currentUrls[currentTabId] == url) {
+                          // Only update if URL hasn't changed since we started fetching title
+                          setState(() {
+                            _currentTitles[currentTabId] = title ?? '';
+                          });
+                          
+                          ref.read(tabsProvider.notifier).updateTab(
+                            tabId: currentTabId,
                             url: url,
-                            title: title,
+                            title: title ?? '',
                           );
+                        }
+                      }).catchError((_) {
+                        // If title fetch fails, still update tab with URL
+                        if (mounted && _currentUrls[currentTabId] == url) {
+                          ref.read(tabsProvider.notifier).updateTab(
+                            tabId: currentTabId,
+                            url: url,
+                            title: '',
+                          );
+                        }
+                      });
+                      
+                      // Update tab immediately with URL (title will be updated later)
+                      ref.read(tabsProvider.notifier).updateTab(
+                        tabId: currentTabId,
+                        url: url,
+                        title: _currentTitles[currentTabId] ?? '', // Use existing title temporarily
+                      );
                     },
-                    onScrollChanged: (x, y) => _handleScroll(tabId, x, y),
-                  ),
+                    onScrollChanged: (x, y) => _handleScroll(currentTabId, x, y),
+                      );
+              }).toList(),
+            ),
           ),
         ],
       ),

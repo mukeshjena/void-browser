@@ -24,8 +24,6 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -110,7 +108,6 @@ class _ScannerOverlayPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     final cornerLength = 30.0;
-    final cornerWidth = 4.0;
 
     // Top-left corner
     canvas.drawLine(

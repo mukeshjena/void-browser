@@ -31,7 +31,7 @@ class HorizontalNewsCard extends ConsumerWidget {
     
     return RepaintBoundary(
       child: Card(
-      elevation: 2,
+      elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
@@ -50,8 +50,8 @@ class HorizontalNewsCard extends ConsumerWidget {
               CachedNetworkImage(
                 imageUrl: article.imageUrl!,
                 fit: BoxFit.cover,
-                fadeInDuration: const Duration(milliseconds: 200),
-                fadeOutDuration: const Duration(milliseconds: 100),
+                fadeInDuration: const Duration(milliseconds: 150),
+                fadeOutDuration: const Duration(milliseconds: 50),
                 memCacheWidth: 600, // Limit memory cache size
                 memCacheHeight: 400,
                 maxWidthDiskCache: 1200,

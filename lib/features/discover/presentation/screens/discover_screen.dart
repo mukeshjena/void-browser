@@ -162,7 +162,8 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen> {
           slivers: [
             // Add top padding for status bar (since AppBar is in browser_tab_screen)
             SliverToBoxAdapter(
-              child: SizedBox(height: MediaQuery.of(context).padding.top),
+              //child: SizedBox(height: MediaQuery.of(context).padding.top),
+              child: const SizedBox.shrink(),
             ),
             
             // Hero Weather Card

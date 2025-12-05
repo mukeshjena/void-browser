@@ -47,6 +47,8 @@ class DownloadManagerState {
 // Download manager notifier
 class DownloadManagerNotifier extends StateNotifier<DownloadManagerState> {
   late Box _downloadsBox;
+  final Map<String, DateTime> _lastNotificationUpdate = {}; // Throttle notification updates
+  static const Duration _notificationThrottle = Duration(milliseconds: 500); // Update every 500ms
 
   DownloadManagerNotifier() : super(DownloadManagerState()) {
     _initialize();
@@ -750,7 +752,9 @@ class DownloadManagerNotifier extends StateNotifier<DownloadManagerState> {
         counter++;
       }
 
-      downloadId = DateTime.now().millisecondsSinceEpoch.toString();
+      // Generate download ID that fits in 32-bit integer for notifications
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      downloadId = (timestamp % 2147483647).toString(); // Ensure it fits in 32-bit int range
 
       // Create download entity
       final download = DownloadEntity(
@@ -781,7 +785,8 @@ class DownloadManagerNotifier extends StateNotifier<DownloadManagerState> {
 
       // Show download started notification
       try {
-        final notificationId = int.tryParse(downloadId) ?? DateTime.now().millisecondsSinceEpoch % 2147483647;
+        // Ensure notification ID is within 32-bit integer range
+        final notificationId = (int.tryParse(downloadId) ?? DateTime.now().millisecondsSinceEpoch) % 2147483647;
         await NotificationService().showDownloadStartedNotification(
           filename: finalFilename,
           notificationId: notificationId,
@@ -876,24 +881,56 @@ class DownloadManagerNotifier extends StateNotifier<DownloadManagerState> {
       progress: updatedProgress,
       downloads: updatedDownloads,
     );
+
+    // Update notification with progress (throttled)
+    try {
+      final download = updatedDownloads.firstWhere(
+        (d) => d.id == downloadId && d.status == DownloadStatus.downloading,
+      );
+      
+      final now = DateTime.now();
+      final lastUpdate = _lastNotificationUpdate[downloadId];
+      
+      // Throttle notification updates to avoid too frequent updates
+      if (lastUpdate == null || now.difference(lastUpdate) >= _notificationThrottle) {
+        _lastNotificationUpdate[downloadId] = now;
+        
+        // Ensure notification ID is within 32-bit integer range
+        final notificationId = (int.tryParse(downloadId) ?? DateTime.now().millisecondsSinceEpoch) % 2147483647;
+        NotificationService().showDownloadProgressNotification(
+          filename: download.filename,
+          notificationId: notificationId,
+          progress: progress,
+          received: received,
+          total: total,
+        );
+      }
+    } catch (e) {
+      // If download not found or notification update fails, continue with download
+    }
   }
 
   void _markCompleted(String downloadId, String filepath) {
-    final updatedDownloads = state.downloads.map((download) {
-      if (download.id == downloadId) {
-        return download.copyWith(
+    DownloadEntity? completedDownload;
+    final updatedDownloads = state.downloads.map((d) {
+      if (d.id == downloadId) {
+        completedDownload = d;
+        return d.copyWith(
           status: DownloadStatus.completed,
           completedAt: DateTime.now(),
           savedPath: filepath,
         );
       }
-      return download;
+      return d;
     }).toList();
 
     final updatedCancelTokens = {...state.cancelTokens};
     updatedCancelTokens.remove(downloadId);
     final updatedProgress = {...state.progress};
     updatedProgress.remove(downloadId);
+    
+    // Remove from notification throttle map
+    _lastNotificationUpdate.remove(downloadId);
 
     state = state.copyWith(
       downloads: updatedDownloads,
@@ -903,13 +940,29 @@ class DownloadManagerNotifier extends StateNotifier<DownloadManagerState> {
 
     // Save to Hive (only save completed downloads, not progress updates)
     _saveDownloads(updatedDownloads);
+
+    // Show download completed notification
+    if (completedDownload != null) {
+      try {
+        // Ensure notification ID is within 32-bit integer range
+        final notificationId = (int.tryParse(downloadId) ?? DateTime.now().millisecondsSinceEpoch) % 2147483647;
+        NotificationService().showDownloadCompletedNotification(
+          filename: completedDownload!.filename,
+          notificationId: notificationId,
+        );
+      } catch (e) {
+        // If notification fails, continue
+      }
+    }
   }
 
   void _markFailed(String identifier, String error) {
     // Identifier can be downloadId or url
+    DownloadEntity? failedDownload;
     final updatedDownloads = state.downloads.map((download) {
       if ((download.id == identifier || download.url == identifier) && 
           download.status == DownloadStatus.downloading) {
+        failedDownload = download;
         return download.copyWith(
           status: DownloadStatus.failed,
           errorMessage: error,
@@ -926,6 +979,20 @@ class DownloadManagerNotifier extends StateNotifier<DownloadManagerState> {
     // If permission error, update permission state
     if (error.contains('permission') || error.contains('Permission')) {
       state = state.copyWith(hasStoragePermission: false, permissionError: error);
+    }
+
+    // Show download failed notification
+    if (failedDownload != null) {
+      try {
+        final notificationId = int.tryParse(failedDownload!.id) ?? DateTime.now().millisecondsSinceEpoch % 2147483647;
+        NotificationService().showDownloadFailedNotification(
+          filename: failedDownload!.filename,
+          notificationId: notificationId,
+          error: error,
+        );
+      } catch (e) {
+        // If notification fails, continue
+      }
     }
   }
 

@@ -15,15 +15,15 @@ class PortraitImageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Hero(
-      tag: '${heroPrefix ?? ""}image_${image.id}',
-      child: Card(
-        elevation: 2,
-        shadowColor: Colors.black.withOpacity(0.15),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        clipBehavior: Clip.antiAlias,
+    return RepaintBoundary(
+      child: Hero(
+        tag: '${heroPrefix ?? ""}image_${image.id}',
+        child: Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
           child: AspectRatio(
@@ -48,6 +48,7 @@ class PortraitImageCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
       ),
     );
   }

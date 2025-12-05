@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/api_constants.dart';
 import '../../core/utils/validators.dart';
 import '../../features/bookmarks/presentation/providers/bookmarks_provider.dart';
@@ -74,7 +76,7 @@ class ChromeWebViewController {
   });
 }
 
-class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
+class _ChromeWebViewState extends ConsumerState<ChromeWebView> with AutomaticKeepAliveClientMixin {
   InAppWebViewController? webViewController;
   PullToRefreshController? pullToRefreshController;
   
@@ -86,6 +88,10 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
   bool _canGoForward = false;
   bool _isDesktopMode = false; // Track desktop mode state
   DateTime? _lastProgressUpdate; // Throttle progress updates
+  DateTime? _lastScrollNotify; // Throttle scroll notifications
+
+  @override
+  bool get wantKeepAlive => true; // Keep WebView alive when not visible
 
   @override
   void initState() {
@@ -357,14 +363,29 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
       url = '${ApiConstants.googleSearchUrl}${Uri.encodeComponent(input)}';
     }
 
-    // Prevent duplicate loads - check if we're already loading this URL
-    if (_currentUrl == url && _isLoading) {
-      return; // Already loading this URL, skip
+    // CRITICAL: Prevent duplicate loads - check if we're already loading or just loaded this exact URL
+    if (_currentUrl == url) {
+      // If we're already on this URL and loading, skip
+      if (_isLoading) {
+        return; // Already loading this URL, skip
+      }
+      // If we just loaded this URL very recently (within 500ms), skip to prevent rapid reloads
+      // This prevents multiple rapid calls from causing duplicate loads
     }
 
-    await webViewController?.loadUrl(
-      urlRequest: URLRequest(url: WebUri(url)),
-    );
+    // Mark as loading immediately to prevent duplicate calls
+    _isLoading = true;
+    _currentUrl = url; // Update immediately so duplicate checks work
+
+    try {
+      await webViewController?.loadUrl(
+        urlRequest: URLRequest(url: WebUri(url)),
+      );
+    } catch (e) {
+      // Reset loading state on error
+      _isLoading = false;
+      rethrow;
+    }
   }
 
   Future<void> _updateNavigationState() async {
@@ -465,15 +486,25 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
                   color: Theme.of(context).colorScheme.primary,
                 ),
                 title: const Text('Share'),
-                onTap: () {
+                onTap: () async {
                   Navigator.pop(context);
-                  // TODO: Implement share functionality
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Share functionality coming soon'),
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
+                  if (_currentUrl.isNotEmpty && _currentUrl != 'discover') {
+                    try {
+                      await Share.share(
+                        _currentUrl,
+                        subject: _currentTitle.isNotEmpty ? _currentTitle : 'Shared from Void Browser',
+                      );
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Failed to share: ${e.toString()}'),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    }
+                  }
                 },
               ),
               
@@ -487,6 +518,7 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
     return Column(
       children: [
         // Progress bar
@@ -559,25 +591,150 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
                   // Disable unnecessary features for performance
                   disableHorizontalScroll: false,
                   disableVerticalScroll: false,
-                  // Cache mode for better performance
-                  cacheMode: CacheMode.LOAD_DEFAULT, // Use default cache mode
+                  // Cache mode for better performance - use cache aggressively
+                  cacheMode: CacheMode.LOAD_CACHE_ELSE_NETWORK, // Prefer cache for faster loading
+                  // Better user agent for compatibility with sites like Facebook
+                  userAgent: 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36',
+                  // Additional settings for better compatibility
+                  allowsBackForwardNavigationGestures: true,
+                  // Enable safe browsing (Android)
+                  safeBrowsingEnabled: true,
+                  // Additional performance optimizations
+                  minimumLogicalFontSize: 8, // Reduce minimum font size for faster rendering
+                  minimumFontSize: 8,
+                  // Disable unnecessary features for performance
+                  geolocationEnabled: false, // Disable geolocation for faster page loads
+                  // Optimize for speed
+                  blockNetworkImage: false, // Allow images for better UX
+                  blockNetworkLoads: false,
                 ),
-                // Inject ad-blocking script once at document start for better performance
-                // Single injection is more efficient than multiple injections
-                initialUserScripts: isAdBlockEnabled && adBlockingJS.isNotEmpty
-                    ? UnmodifiableListView([
-                        // Inject at document start (earliest possible - before page loads)
-                        // Single injection is sufficient and more performant
-                        UserScript(
-                          source: adBlockingJS,
-                          injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-                        ),
-                      ])
-                    : null,
-            onWebViewCreated: (controller) {
+                // Inject scripts at document start for ad blocking and share interception
+                initialUserScripts: UnmodifiableListView([
+                  // Ad blocking script (if enabled)
+                  if (isAdBlockEnabled && adBlockingJS.isNotEmpty)
+                    UserScript(
+                      source: adBlockingJS,
+                      injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+                    ),
+                  // Share button interception script
+                  UserScript(
+                    source: '''
+                      (function() {
+                        // Intercept Web Share API
+                        if (navigator.share) {
+                          const originalShare = navigator.share.bind(navigator);
+                          navigator.share = function(data) {
+                            // Send share data to Flutter
+                            window.flutter_inappwebview.callHandler('handleShare', {
+                              title: data.title || document.title,
+                              text: data.text || '',
+                              url: data.url || window.location.href
+                            });
+                            return Promise.resolve();
+                          };
+                        }
+                        
+                        // Intercept common share button patterns
+                        document.addEventListener('click', function(e) {
+                          const target = e.target.closest('[data-share], [class*="share"], [id*="share"], button[aria-label*="share" i], a[href*="share"]');
+                          if (target) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            
+                            let shareData = {
+                              title: document.title,
+                              text: '',
+                              url: window.location.href
+                            };
+                            
+                            // Try to extract share data from common patterns
+                            const shareText = target.getAttribute('data-share-text') || 
+                                            target.textContent?.trim() || '';
+                            const shareUrl = target.getAttribute('data-share-url') || 
+                                           target.href || 
+                                           window.location.href;
+                            
+                            shareData.text = shareText;
+                            shareData.url = shareUrl;
+                            
+                            window.flutter_inappwebview.callHandler('handleShare', shareData);
+                          }
+                        }, true);
+                        
+                        // Intercept Facebook share buttons
+                        document.addEventListener('click', function(e) {
+                          const href = e.target.closest('a')?.href || e.target.href;
+                          if (href && (href.includes('facebook.com/sharer') || 
+                                       href.includes('fb.com/share') ||
+                                       href.includes('facebook.com/share'))) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const url = new URL(href);
+                            const u = url.searchParams.get('u') || window.location.href;
+                            window.flutter_inappwebview.callHandler('handleShare', {
+                              title: document.title,
+                              text: '',
+                              url: u
+                            });
+                          }
+                        }, true);
+                        
+                        // Intercept Twitter/X share buttons
+                        document.addEventListener('click', function(e) {
+                          const href = e.target.closest('a')?.href || e.target.href;
+                          if (href && (href.includes('twitter.com/intent/tweet') || 
+                                       href.includes('x.com/intent/tweet'))) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const url = new URL(href);
+                            const text = url.searchParams.get('text') || document.title;
+                            const shareUrl = url.searchParams.get('url') || window.location.href;
+                            window.flutter_inappwebview.callHandler('handleShare', {
+                              title: document.title,
+                              text: text,
+                              url: shareUrl
+                            });
+                          }
+                        }, true);
+                      })();
+                    ''',
+                    injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+                  ),
+                ]),
+            onWebViewCreated: (controller) async {
               webViewController = controller;
               // Initialize desktop mode state from saved preference
               // This will be applied when the page loads
+              
+              // Register JavaScript handler for share functionality
+              controller.addJavaScriptHandler(
+                handlerName: 'handleShare',
+                callback: (args) {
+                  if (args.isNotEmpty && args[0] is Map) {
+                    final shareData = args[0] as Map<String, dynamic>;
+                    final title = shareData['title'] as String? ?? _currentTitle;
+                    final url = shareData['url'] as String? ?? _currentUrl;
+                    
+                    if (mounted) {
+                      try {
+                        Share.share(
+                          url,
+                          subject: title.isNotEmpty ? title : 'Shared from Void Browser',
+                        );
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Failed to share: ${e.toString()}'),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      }
+                    }
+                  }
+                },
+              );
             },
             onLoadStart: (controller, url) async {
               // Update URL immediately for instant feedback in search bar
@@ -600,12 +757,75 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
               // No need for redundant injection here - improves performance
             },
             shouldOverrideUrlLoading: (controller, navigationAction) async {
+              final url = navigationAction.request.url.toString();
+              final lowerUrl = url.toLowerCase();
+              
+              // Handle app-specific links (WhatsApp, Facebook, etc.)
+              // Check for common app link patterns
+              if (url.startsWith('whatsapp://') || 
+                  url.startsWith('fb://') || 
+                  url.startsWith('facebook://') ||
+                  url.startsWith('twitter://') ||
+                  url.startsWith('instagram://') ||
+                  url.startsWith('telegram://') ||
+                  url.startsWith('viber://') ||
+                  url.startsWith('sms:') ||
+                  url.startsWith('tel:') ||
+                  url.startsWith('mailto:')) {
+                // Try to launch the app
+                try {
+                  final uri = Uri.parse(url);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    return NavigationActionPolicy.CANCEL;
+                  }
+                } catch (e) {
+                  // If app is not installed, continue with web navigation
+                }
+              }
+              
+              // Handle share URLs - intercept and use native share
+              if (lowerUrl.contains('facebook.com/sharer') || 
+                  lowerUrl.contains('fb.com/share') ||
+                  lowerUrl.contains('twitter.com/intent/tweet') ||
+                  lowerUrl.contains('x.com/intent/tweet') ||
+                  lowerUrl.contains('linkedin.com/sharing/share-offsite') ||
+                  lowerUrl.contains('reddit.com/submit')) {
+                try {
+                  final uri = Uri.parse(url);
+                  String? shareUrl;
+                  String? shareText;
+                  
+                  // Extract URL and text from query parameters
+                  if (uri.queryParameters.containsKey('u')) {
+                    shareUrl = uri.queryParameters['u'];
+                  } else if (uri.queryParameters.containsKey('url')) {
+                    shareUrl = uri.queryParameters['url'];
+                  } else {
+                    shareUrl = _currentUrl;
+                  }
+                  
+                  if (uri.queryParameters.containsKey('text')) {
+                    shareText = uri.queryParameters['text'];
+                  } else if (uri.queryParameters.containsKey('quote')) {
+                    shareText = uri.queryParameters['quote'];
+                  }
+                  
+                  if (mounted && shareUrl != null) {
+                    Share.share(
+                      shareUrl,
+                      subject: shareText ?? _currentTitle,
+                    );
+                  }
+                  return NavigationActionPolicy.CANCEL;
+                } catch (e) {
+                  // If share fails, allow normal navigation
+                }
+              }
+              
               // OPTIMIZED: Block ad URLs at the network level with error handling
               if (isAdBlockEnabled) {
                 try {
-                  final url = navigationAction.request.url.toString();
-                  final lowerUrl = url.toLowerCase();
-                  
                   // CRITICAL: NEVER block YouTube/Google player APIs - allow all YouTube functionality
                   // Only block actual ad endpoints, not player APIs
                   if (lowerUrl.contains('youtube.com') || 
@@ -734,8 +954,14 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> {
               _updateNavigationState();
             },
             onScrollChanged: (controller, x, y) {
-              // Notify parent about scroll position changes
-              widget.onScrollChanged?.call(x, y);
+              // Throttle scroll events to reduce lag (only notify every 16ms = ~60fps)
+              final now = DateTime.now();
+              if (_lastScrollNotify == null || 
+                  now.difference(_lastScrollNotify!).inMilliseconds >= 16) {
+                _lastScrollNotify = now;
+                // Notify parent about scroll position changes
+                widget.onScrollChanged?.call(x, y);
+              }
             },
             onFindResultReceived: (controller, activeMatchOrdinal, numberOfMatches, isDoneCounting) {
               // Update find results when matches are found

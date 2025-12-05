@@ -221,7 +221,7 @@ class ImageDetailScreen extends ConsumerWidget {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFE91E63),
                           foregroundColor: Colors.white,
-                          elevation: 4,
+                          elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),

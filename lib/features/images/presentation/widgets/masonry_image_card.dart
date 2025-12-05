@@ -21,8 +21,7 @@ class MasonryImageCard extends StatelessWidget {
       child: Hero(
       tag: '${heroPrefix ?? ""}image_${image.id}',
       child: Card(
-        elevation: 2,
-        shadowColor: Colors.black.withOpacity(0.15),
+        elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
         ),
@@ -34,8 +33,8 @@ class MasonryImageCard extends StatelessWidget {
             child: CachedNetworkImage(
               imageUrl: image.smallUrl,
               fit: BoxFit.cover,
-              fadeInDuration: const Duration(milliseconds: 200),
-              fadeOutDuration: const Duration(milliseconds: 100),
+              fadeInDuration: const Duration(milliseconds: 150),
+              fadeOutDuration: const Duration(milliseconds: 50),
               memCacheWidth: 400, // Limit memory cache size for better performance
               placeholder: (context, url) => Container(
                 color: Colors.grey[300],

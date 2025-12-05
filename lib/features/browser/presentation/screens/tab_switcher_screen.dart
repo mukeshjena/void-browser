@@ -101,7 +101,9 @@ class TabSwitcherScreen extends ConsumerWidget {
               itemBuilder: (context, index) {
                 final tab = tabs[index];
                 final isActive = tab.id == activeTabId;
-                return _TabCard(
+                final canDismiss = tabs.length > 1; // Don't allow dismissing the last tab
+                
+                Widget tabCard = _TabCard(
                   tab: tab,
                   isActive: isActive,
                   onTap: () {
@@ -109,9 +111,33 @@ class TabSwitcherScreen extends ConsumerWidget {
                     Navigator.pop(context);
                   },
                   onClose: () {
-                    ref.read(tabsProvider.notifier).closeTab(tab.id);
+                    if (canDismiss) {
+                      ref.read(tabsProvider.notifier).closeTab(tab.id);
+                    }
                   },
                 );
+                
+                // Only wrap with Dismissible if there's more than one tab
+                if (canDismiss) {
+                  return Dismissible(
+                    key: Key('tab_${tab.id}'),
+                    direction: DismissDirection.horizontal,
+                    // No background - simple Chrome-like gesture (transparent)
+                    background: Container(color: Colors.transparent),
+                    secondaryBackground: Container(color: Colors.transparent),
+                    confirmDismiss: (direction) async {
+                      // Allow dismissal
+                      return true;
+                    },
+                    onDismissed: (direction) {
+                      // Close the tab when dismissed
+                      ref.read(tabsProvider.notifier).closeTab(tab.id);
+                    },
+                    child: tabCard,
+                  );
+                } else {
+                  return tabCard;
+                }
               },
             ),
     );
@@ -138,26 +164,20 @@ class _TabCard extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: isActive
-              ? (isDark ? Colors.grey[900] : Colors.white)
-              : (isDark ? Colors.grey[800] : Colors.grey[200]),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
+      child: SizedBox.expand(
+        child: Container(
+          decoration: BoxDecoration(
             color: isActive
-                ? (isDark ? Colors.blue : Colors.blue[300]!)
-                : Colors.transparent,
-            width: 2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+                ? (isDark ? Colors.grey[900] : Colors.white)
+                : (isDark ? Colors.grey[800] : Colors.grey[200]),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isActive
+                  ? (isDark ? Colors.blue : Colors.blue[300]!)
+                  : Colors.transparent,
+              width: 2,
             ),
-          ],
-        ),
+          ),
         child: Stack(
           children: [
             // Tab content
@@ -236,6 +256,7 @@ class _TabCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
         ),
       ),
     );

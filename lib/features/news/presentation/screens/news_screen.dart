@@ -147,13 +147,6 @@ class _NewsScreenState extends ConsumerState<NewsScreen> with WidgetsBindingObse
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 decoration: BoxDecoration(
                   color: Theme.of(context).scaffoldBackgroundColor,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
                 ),
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -314,15 +307,6 @@ class _NewsScreenState extends ConsumerState<NewsScreen> with WidgetsBindingObse
               : null,
           color: isSelected ? null : (isDark ? Colors.grey[800] : Colors.grey[200]),
           borderRadius: BorderRadius.circular(20),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: const Color(0xFF5E35B1).withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

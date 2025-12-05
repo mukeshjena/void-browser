@@ -22,16 +22,9 @@ class QuickLinksWidget extends ConsumerWidget {
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       child: SizedBox(
-        height: 80,
+        height: 68,
         child: ListView.builder(
           scrollDirection: Axis.horizontal,
           itemCount: links.length + 1, // +1 for add button
@@ -131,31 +124,31 @@ class _QuickLinkItem extends StatelessWidget {
           children: [
             // Icon container
             ClipRRect(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(14),
               child: link.iconUrl != null
                   ? CachedNetworkImage(
                       imageUrl: link.iconUrl!,
-                      width: 56,
-                      height: 56,
+                      width: 44,
+                      height: 44,
                       fit: BoxFit.cover,
                       errorWidget: (context, url, error) => Container(
-                        width: 56,
-                        height: 56,
+                        width: 44,
+                        height: 44,
                         color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF5F5F5),
                         child: Icon(
                           Icons.link,
                           color: isDark ? Colors.white70 : Colors.black54,
-                          size: 24,
+                          size: 20,
                         ),
                       ),
                       placeholder: (context, url) => Container(
-                        width: 56,
-                        height: 56,
+                        width: 44,
+                        height: 44,
                         color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF5F5F5),
                         child: Center(
                           child: SizedBox(
-                            width: 24,
-                            height: 24,
+                            width: 20,
+                            height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
                               color: isDark ? Colors.white70 : Colors.black54,
@@ -165,22 +158,22 @@ class _QuickLinkItem extends StatelessWidget {
                       ),
                     )
                   : Container(
-                      width: 56,
-                      height: 56,
+                      width: 44,
+                      height: 44,
                       color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF5F5F5),
                       child: Icon(
                         Icons.link,
                         color: isDark ? Colors.white70 : Colors.black54,
-                        size: 24,
+                        size: 20,
                       ),
                     ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 5),
             // Name
             Text(
               link.name,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 10,
                 fontWeight: FontWeight.w500,
                 color: isDark ? Colors.white70 : Colors.black87,
               ),
@@ -215,24 +208,24 @@ class _AddQuickLinkButton extends StatelessWidget {
           children: [
             // Add icon container
             Container(
-              width: 56,
-              height: 56,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF5F5F5),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(14),
               ),
               child: Icon(
                 Icons.add,
                 color: isDark ? Colors.white70 : Colors.black54,
-                size: 28,
+                size: 22,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 5),
             // Add text
             Text(
               'Add',
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 10,
                 fontWeight: FontWeight.w500,
                 color: isDark ? Colors.white70 : Colors.black87,
               ),

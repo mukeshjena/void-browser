@@ -4,12 +4,309 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import '../providers/download_manager_provider.dart';
 import '../../domain/entities/download_entity.dart';
 
 class DownloadsScreenNew extends ConsumerWidget {
   const DownloadsScreenNew({super.key});
+
+  /// Open file with permission handling and app chooser
+  Future<void> _openFileWithPermission(BuildContext context, String filePath) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('File not found'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Check and request storage permission before opening file
+      if (Platform.isAndroid) {
+        final androidVersion = await _getAndroidVersion();
+        
+        if (androidVersion < 33) {
+          // Android < 13 - need READ_EXTERNAL_STORAGE permission
+          final status = await Permission.storage.status;
+          if (!status.isGranted) {
+            // Request permission
+            final result = await Permission.storage.request();
+            if (!result.isGranted) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Storage permission is required to open files. Please grant permission when prompted.'),
+                    duration: Duration(seconds: 4),
+                  ),
+                );
+              }
+              return;
+            }
+          }
+        } else {
+          // Android 13+ - check for permissions based on file type and location
+          // Files in app directory don't need permission, but files in public storage do
+          final fileExtension = filePath.toLowerCase().split('.').last;
+          bool needsPermission = false;
+          Permission? requiredPermission;
+          
+          // Check if file is in app's directory
+          try {
+            final externalDir = await getExternalStorageDirectory();
+            final appDir = externalDir?.path ?? '';
+            final isInAppDirectory = filePath.startsWith(appDir);
+            
+            if (!isInAppDirectory) {
+              // File is in public storage, check for appropriate permission based on file type
+              if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].contains(fileExtension)) {
+                // Image files
+                needsPermission = true;
+                requiredPermission = Permission.photos;
+              } else if (['mp4', 'avi', 'mov', 'mkv', 'wmv', 'flv', 'webm'].contains(fileExtension)) {
+                // Video files
+                needsPermission = true;
+                requiredPermission = Permission.videos;
+              } else if (['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'].contains(fileExtension)) {
+                // Audio files
+                needsPermission = true;
+                requiredPermission = Permission.audio;
+              } else {
+                // For other files (PDF, DOCX, XLSX, etc.) in public storage on Android 13+
+                // We need to check if we can access them
+                // Try to read the file - if it fails, we might need to use SAF or request permission
+                try {
+                  await file.readAsBytes();
+                  // File is accessible, no permission needed
+                  needsPermission = false;
+                } catch (e) {
+                  // File might not be accessible
+                  // For Android 13+, non-media files in public storage might need special handling
+                  // We'll try to open it anyway and let open_filex handle it
+                  debugPrint('File might not be directly accessible: $e');
+                  needsPermission = false; // Let open_filex try to handle it
+                }
+              }
+            }
+            
+            if (needsPermission && requiredPermission != null) {
+              final status = await requiredPermission.status;
+              if (!status.isGranted) {
+                final result = await requiredPermission.request();
+                if (!result.isGranted) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Permission is required to open this ${fileExtension.toUpperCase()} file. Please grant permission when prompted.'),
+                        duration: const Duration(seconds: 4),
+                      ),
+                    );
+                  }
+                  return;
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('Error checking file location: $e');
+            // Continue anyway, open_filex will handle it
+          }
+        }
+      }
+
+      // Verify file is readable
+      if (!await file.exists()) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('File not found'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Check if file is readable
+      try {
+        await file.readAsBytes();
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('File is not accessible. Please check file permissions.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Use open_filex to open file directly in appropriate app (shows app chooser if multiple apps available)
+      // Normalize the file path to ensure it's in the correct format
+      final normalizedPath = filePath.replaceAll('\\', '/');
+      
+      debugPrint('Attempting to open file: $normalizedPath');
+      final result = await OpenFilex.open(normalizedPath);
+      debugPrint('Open file result: ${result.type}, message: ${result.message}');
+      
+      if (context.mounted) {
+        if (result.type == ResultType.done) {
+          // Success - file opened in app
+          return;
+        } else if (result.type == ResultType.permissionDenied) {
+          // Permission denied - request again or show message
+          if (Platform.isAndroid) {
+            final androidVersion = await _getAndroidVersion();
+            if (androidVersion < 33) {
+              final permissionResult = await Permission.storage.request();
+              if (permissionResult.isGranted) {
+                // Retry opening file
+                final retryResult = await OpenFilex.open(normalizedPath);
+                if (retryResult.type != ResultType.done && context.mounted) {
+                  String errorMsg = 'Could not open file';
+                  if (retryResult.message.isNotEmpty) {
+                    errorMsg = 'Error: ${retryResult.message}';
+                  } else if (retryResult.type == ResultType.noAppToOpen) {
+                    errorMsg = 'No app found to open this file type';
+                  }
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(errorMsg),
+                      duration: const Duration(seconds: 4),
+                    ),
+                  );
+                }
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Permission denied. Please grant storage permission in app settings.'),
+                    duration: Duration(seconds: 4),
+                  ),
+                );
+              }
+            } else {
+              // Android 13+ - try alternative method or show detailed error
+              String errorMsg = 'Could not open file';
+              if (result.message.isNotEmpty) {
+                errorMsg = 'Error: ${result.message}';
+              } else {
+                errorMsg = 'Could not open file. The file may be in a restricted location.';
+              }
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(errorMsg),
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            }
+          }
+        } else if (result.type == ResultType.noAppToOpen) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No app found to open this file type. Please install an app that can open this file.'),
+              duration: Duration(seconds: 4),
+            ),
+          );
+        } else if (result.type == ResultType.fileNotFound) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('File not found. The file may have been moved or deleted.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        } else if (result.type == ResultType.error) {
+          String message = 'Could not open file';
+          if (result.message.isNotEmpty) {
+            message = 'Error: ${result.message}';
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(message),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        } else {
+          // Unknown error type
+          String message = 'Could not open file';
+          if (result.message.isNotEmpty) {
+            message = 'Error: ${result.message}';
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(message),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Log the error for debugging
+      debugPrint('Error opening file: $e');
+      debugPrint('File path: $filePath');
+      
+      if (context.mounted) {
+        String errorMessage = 'Could not open file';
+        final errorStr = e.toString().toLowerCase();
+        
+        if (errorStr.contains('permission')) {
+          errorMessage = 'Permission denied. Please grant storage permission in app settings.';
+        } else if (errorStr.contains('not found') || errorStr.contains('no such file')) {
+          errorMessage = 'File not found. The file may have been moved or deleted.';
+        } else if (errorStr.isNotEmpty) {
+          errorMessage = 'Error: ${e.toString()}';
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Get Android version
+  Future<int> _getAndroidVersion() async {
+    if (!Platform.isAndroid) return 0;
+    try {
+      // Try to get Android version from Platform.version
+      // Format is usually like "Android 15 (API 35)" or "Linux 5.x.x-xxx-generic #xxx SMP ..."
+      final versionString = Platform.version;
+      
+      // Try to match API level first (more reliable)
+      final apiMatch = RegExp(r'API (\d+)', caseSensitive: false).firstMatch(versionString);
+      if (apiMatch != null) {
+        return int.parse(apiMatch.group(1)!);
+      }
+      
+      // Fallback: try to match Android version number
+      final versionMatch = RegExp(r'Android (\d+)', caseSensitive: false).firstMatch(versionString);
+      if (versionMatch != null) {
+        final version = int.parse(versionMatch.group(1)!);
+        // Convert Android version to API level
+        // Android 15 = API 35, Android 14 = API 34, Android 13 = API 33, etc.
+        if (version >= 15) return 35;
+        if (version >= 14) return 34;
+        if (version >= 13) return 33;
+        if (version >= 12) return 31;
+        if (version >= 11) return 30;
+        if (version >= 10) return 29;
+        if (version >= 9) return 28;
+        return 28; // Default to API 28
+      }
+    } catch (e) {
+      // If parsing fails, assume newer version (Android 13+)
+    }
+    // Default to Android 13 (API 33) to be safe with scoped storage
+    return 33;
+  }
 
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
@@ -124,43 +421,7 @@ class DownloadsScreenNew extends ConsumerWidget {
                     if (download.savedPath != null && download.savedPath!.isNotEmpty) {
                       final file = File(download.savedPath!);
                       if (await file.exists()) {
-                        try {
-                          // Use open_filex for proper file opening on Android/iOS
-                          final result = await OpenFilex.open(download.savedPath!);
-                          
-                          if (context.mounted) {
-                            if (result.type != ResultType.done) {
-                              String message = 'Could not open file';
-                              if (result.type == ResultType.noAppToOpen) {
-                                message = 'No app found to open this file type';
-                              } else if (result.type == ResultType.fileNotFound) {
-                                message = 'File not found';
-                              } else if (result.type == ResultType.permissionDenied) {
-                                message = 'Permission denied to open file';
-                              } else if (result.type == ResultType.error) {
-                                message = result.message.isNotEmpty 
-                                    ? 'Error opening file: ${result.message}'
-                                    : 'Error opening file: Unknown error';
-                              }
-                              
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(message),
-                                  duration: const Duration(seconds: 3),
-                                ),
-                              );
-                            }
-                          }
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Could not open file: ${e.toString()}'),
-                                duration: const Duration(seconds: 3),
-                              ),
-                            );
-                          }
-                        }
+                        await _openFileWithPermission(context, download.savedPath!);
                       } else {
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -384,7 +645,7 @@ class DownloadsScreenNew extends ConsumerWidget {
                   return Card(
                     key: ValueKey('download_${download.id}_$index'),
                     margin: const EdgeInsets.only(bottom: 12),
-                  elevation: 2,
+                  elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),

@@ -19,8 +19,7 @@ class WideImageCard extends StatelessWidget {
       child: Hero(
       tag: '${heroPrefix ?? ""}image_${image.id}',
       child: Card(
-        elevation: 4,
-        shadowColor: Colors.black.withOpacity(0.2),
+        elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
         ),
@@ -34,8 +33,8 @@ class WideImageCard extends StatelessWidget {
                 child: CachedNetworkImage(
                   imageUrl: image.smallUrl,
                   fit: BoxFit.cover,
-                  fadeInDuration: const Duration(milliseconds: 200),
-                  fadeOutDuration: const Duration(milliseconds: 100),
+                  fadeInDuration: const Duration(milliseconds: 150),
+                  fadeOutDuration: const Duration(milliseconds: 50),
                   memCacheWidth: 600, // Limit memory cache size for better performance
                   memCacheHeight: 338,
                   placeholder: (context, url) => Container(

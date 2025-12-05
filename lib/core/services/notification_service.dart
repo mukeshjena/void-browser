@@ -116,6 +116,177 @@ class NotificationService {
     await _notifications.cancel(notificationId);
   }
 
+  /// Show download progress notification
+  Future<void> showDownloadProgressNotification({
+    required String filename,
+    required int notificationId,
+    required double progress,
+    required int received,
+    required int total,
+  }) async {
+    if (!_initialized) {
+      await initialize();
+    }
+
+    // Format file size
+    String formatBytes(int bytes) {
+      if (bytes < 1024) return '$bytes B';
+      if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+      if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+    }
+
+    final progressPercent = (progress * 100).toInt();
+    final receivedStr = formatBytes(received);
+    final totalStr = formatBytes(total);
+
+    // Truncate filename if too long
+    final displayFilename = filename.length > 40 
+        ? '${filename.substring(0, 37)}...' 
+        : filename;
+
+    // Android notification details with progress
+    final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'downloads_channel',
+      'Downloads',
+      channelDescription: 'Notifications for file downloads',
+      importance: Importance.low,
+      priority: Priority.low,
+      showWhen: false,
+      ongoing: true, // Keep notification visible during download
+      autoCancel: false, // Don't auto-cancel while downloading
+      enableVibration: false,
+      playSound: false,
+      progress: progressPercent,
+      maxProgress: 100,
+      indeterminate: false,
+      onlyAlertOnce: true, // Only play sound/vibrate once
+    );
+
+    // iOS notification details (not used for Android, but required)
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      presentAlert: false,
+      presentBadge: false,
+      presentSound: false,
+    );
+
+    final NotificationDetails details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await _notifications.show(
+      notificationId,
+      'Downloading: $displayFilename',
+      '$progressPercent% • $receivedStr / $totalStr',
+      details,
+      payload: 'downloads',
+    );
+  }
+
+  /// Show download completed notification
+  Future<void> showDownloadCompletedNotification({
+    required String filename,
+    required int notificationId,
+  }) async {
+    if (!_initialized) {
+      await initialize();
+    }
+
+    // Truncate filename if too long
+    final displayFilename = filename.length > 50 
+        ? '${filename.substring(0, 47)}...' 
+        : filename;
+
+    // Android notification details
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'downloads_channel',
+      'Downloads',
+      channelDescription: 'Notifications for file downloads',
+      importance: Importance.defaultImportance,
+      priority: Priority.defaultPriority,
+      showWhen: true,
+      ongoing: false,
+      autoCancel: true,
+      enableVibration: true,
+      playSound: true,
+    );
+
+    // iOS notification details (not used for Android, but required)
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+
+    const NotificationDetails details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await _notifications.show(
+      notificationId,
+      'Download Complete',
+      displayFilename,
+      details,
+      payload: 'downloads',
+    );
+  }
+
+  /// Show download failed notification
+  Future<void> showDownloadFailedNotification({
+    required String filename,
+    required int notificationId,
+    String? error,
+  }) async {
+    if (!_initialized) {
+      await initialize();
+    }
+
+    // Truncate filename if too long
+    final displayFilename = filename.length > 40 
+        ? '${filename.substring(0, 37)}...' 
+        : filename;
+
+    final errorMessage = error != null && error.length > 30
+        ? '${error.substring(0, 27)}...'
+        : (error ?? 'Download failed');
+
+    // Android notification details
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'downloads_channel',
+      'Downloads',
+      channelDescription: 'Notifications for file downloads',
+      importance: Importance.defaultImportance,
+      priority: Priority.defaultPriority,
+      showWhen: true,
+      ongoing: false,
+      autoCancel: true,
+      enableVibration: false,
+      playSound: false,
+    );
+
+    // iOS notification details (not used for Android, but required)
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: false,
+      presentSound: false,
+    );
+
+    const NotificationDetails details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await _notifications.show(
+      notificationId,
+      'Download Failed: $displayFilename',
+      errorMessage,
+      details,
+      payload: 'downloads',
+    );
+  }
+
   /// Cancel all notifications
   Future<void> cancelAllNotifications() async {
     await _notifications.cancelAll();
