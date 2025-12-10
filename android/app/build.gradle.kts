@@ -18,6 +18,8 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = "com.voidbrowser.void_browser"
     compileSdk = flutter.compileSdkVersion
+    // NDK r28+ required for 16 KB page size support (Android 15+ / targetSdk 35)
+    // Flutter manages NDK version, but we ensure it's compatible
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -35,8 +37,8 @@ android {
         applicationId = "com.voidbrowser.app"
         minSdk = flutter.minSdkVersion
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 5
+        versionName = "1.1.1"
         multiDexEnabled = true
         
         // Enable vector drawables to reduce APK size
@@ -64,6 +66,29 @@ android {
                 "proguard-rules.pro"
             )
             signingConfig = signingConfigs.getByName("release")
+        }
+    }
+    
+    // Support for 16 KB memory page sizes (required for Android 15+ / targetSdk 35)
+    // AGP 8.5.1+ automatically handles 16 KB alignment for native libraries
+    // useLegacyPackaging = false ensures proper 16 KB page size support
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
+    
+    // Ensure proper alignment for 16 KB page sizes
+    // AGP 8.5.1+ automatically aligns uncompressed shared libraries to 16 KB boundaries
+    bundle {
+        language {
+            enableSplit = true
+        }
+        density {
+            enableSplit = true
+        }
+        abi {
+            enableSplit = true
         }
     }
 }
