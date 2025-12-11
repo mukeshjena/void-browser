@@ -8,6 +8,7 @@ import '../../../../core/storage/hive_config.dart';
 import '../providers/settings_provider.dart';
 import '../../domain/entities/app_settings_entity.dart';
 import '../../../adblock/presentation/providers/adblock_provider.dart';
+import 'privacy_policy_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -127,6 +128,20 @@ class SettingsScreen extends ConsumerWidget {
             color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
           ),
           _buildSection(context, 'About'),
+          ListTile(
+            title: const Text('Privacy Policy'),
+            subtitle: const Text('View our privacy policy'),
+            leading: const Icon(Icons.privacy_tip_outlined),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PrivacyPolicyScreen(),
+                ),
+              );
+            },
+          ),
           ListTile(
             title: const Text('App Version'),
             subtitle: Text(AppConstants.appVersion),

@@ -1,3 +1,17 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
+plugins {
+    // Top-level build file where you can add configuration options common to all sub-projects/modules.
+    id("com.android.application") version "8.10.0" apply false
+    id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+}
+
+tasks.withType<KotlinCompile>().configureEach {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
 allprojects {
     repositories {
         google()
@@ -5,25 +19,10 @@ allprojects {
     }
 }
 
-val newBuildDir: Directory =
-    rootProject.layout.buildDirectory
-        .dir("../../build")
-        .get()
-rootProject.layout.buildDirectory.value(newBuildDir)
-
-subprojects {
-    val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
-    project.layout.buildDirectory.value(newSubprojectBuildDir)
-}
 subprojects {
     project.evaluationDependsOn(":app")
-    
-    // Suppress Java 8 warnings from dependencies
-    tasks.withType<JavaCompile>().configureEach {
-        options.compilerArgs.add("-Xlint:-options")
-    }
 }
 
-tasks.register<Delete>("clean") {
+tasks.register("clean", Delete::class) {
     delete(rootProject.layout.buildDirectory)
 }

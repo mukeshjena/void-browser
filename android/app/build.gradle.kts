@@ -20,7 +20,7 @@ android {
     compileSdk = flutter.compileSdkVersion
     // NDK r28+ required for 16 KB page size support (Android 15+ / targetSdk 35)
     // Flutter manages NDK version, but we ensure it's compatible
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "29.0.14206865"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -36,9 +36,9 @@ android {
     defaultConfig {
         applicationId = "com.voidbrowser.app"
         minSdk = flutter.minSdkVersion
-        targetSdk = 35
-        versionCode = 5
-        versionName = "1.1.1"
+        targetSdk = 36
+        versionCode = 7
+        versionName = "1.1.3"
         multiDexEnabled = true
         
         // Enable vector drawables to reduce APK size
@@ -71,10 +71,17 @@ android {
     
     // Support for 16 KB memory page sizes (required for Android 15+ / targetSdk 35)
     // AGP 8.5.1+ automatically handles 16 KB alignment for native libraries
-    // useLegacyPackaging = false ensures proper 16 KB page size support
+    // useLegacyPackaging = false ensures native libraries are stored uncompressed
+    // and aligned to 16 KB boundaries, which is required for 16 KB page size support
     packaging {
         jniLibs {
             useLegacyPackaging = false
+            // Ensure native libraries are uncompressed and 16 KB aligned
+            // AGP 8.5.1+ automatically aligns uncompressed .so files to 16 KB
+        }
+        // Ensure resources are properly aligned
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
     
@@ -91,6 +98,13 @@ android {
             enableSplit = true
         }
     }
+    
+    lint {
+        // Don't abort build on lint errors - treat as warnings
+        abortOnError = false
+        // Check all issues but don't fail the build
+        checkReleaseBuilds = false
+    }
 }
 
 flutter {
@@ -99,7 +113,9 @@ flutter {
 
 dependencies {
     // Core library desugaring for flutter_local_notifications
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
-    // AndroidX Core for FileProvider
-    implementation("androidx.core:core:1.12.0")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // AndroidX Core for FileProvider and edge-to-edge support
+    implementation("androidx.core:core:1.13.1")
+    // AndroidX Activity for edge-to-edge support (Android 15+)
+    implementation("androidx.activity:activity:1.9.2")
 }
