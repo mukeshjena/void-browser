@@ -10,8 +10,8 @@ import 'features/browser/presentation/screens/main_screen.dart';
 // Global navigator key for navigation from anywhere (e.g., notifications)
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-class VoidBrowserApp extends ConsumerWidget {
-  const VoidBrowserApp({super.key});
+class VexBrowserApp extends ConsumerWidget {
+  const VexBrowserApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

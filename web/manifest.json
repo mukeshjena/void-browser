@@ -1,6 +1,6 @@
 {
-    "name": "void_browser",
-    "short_name": "void_browser",
+    "name": "vex_browser",
+    "short_name": "vex_browser",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

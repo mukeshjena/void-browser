@@ -15,7 +15,7 @@ class _PrivacyPolicyScreenState extends ConsumerState<PrivacyPolicyScreen> {
   bool _hasError = false;
   String? _errorMessage;
   double _progress = 0.0;
-  static const String privacyPolicyUrl = 'https://mukeshjena.com/void-browser-privacy-policy-v1';
+  static const String privacyPolicyUrl = 'https://mukeshjena.com/vex-fast-privacy-browser-privacy-policy';
 
   @override
   Widget build(BuildContext context) {

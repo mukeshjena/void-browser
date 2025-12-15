@@ -44,7 +44,7 @@ class WeatherRemoteDataSourceImpl implements WeatherRemoteDataSource {
             },
             options: Options(
               headers: {
-                'User-Agent': 'VoidBrowser/1.0', // Required by Nominatim
+                'User-Agent': 'VexBrowser/1.0', // Required by Nominatim
               },
             ),
           );

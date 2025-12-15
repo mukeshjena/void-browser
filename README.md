@@ -1,8 +1,8 @@
-# Void Browser
+# Vex Fast Privacy Browser
 
 <div align="center">
 
-![Void Browser](https://img.shields.io/badge/Void-Browser-black?style=for-the-badge&logo=android)
+![Vex Fast Privacy Browser](https://img.shields.io/badge/Vex-Fast%20Privacy%20Browser-black?style=for-the-badge&logo=android)
 ![Flutter](https://img.shields.io/badge/Flutter-3.10+-02569B?style=for-the-badge&logo=flutter)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?style=for-the-badge&logo=android)
@@ -17,7 +17,7 @@
 
 ## 📱 About
 
-**Void** is an ultra-lightweight, privacy-focused mobile browser built with Flutter for Android. It combines a clean, modern interface inspired by Chrome and Brave with powerful features including ad-blocking, multi-tab management, reader mode, and a discovery panel with news, recipes, weather, and images.
+**Vex Fast Privacy Browser** is an ultra-lightweight, privacy-focused mobile browser built with Flutter for Android. It combines a clean, modern interface inspired by Chrome and Brave with powerful features including ad-blocking, multi-tab management, reader mode, and a discovery panel with news, recipes, weather, and images.
 
 ### Key Highlights
 
@@ -108,8 +108,8 @@ Ensure all checks pass before proceeding.
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/void-browser.git
-cd void-browser
+git clone https://github.com/yourusername/vex-browser.git
+cd vex-browser
 ```
 
 ### 2. Install Dependencies
@@ -154,7 +154,7 @@ flutter run
 
 The app uses a `.env` file for configuration. See `ENV_FILE_TEMPLATE.txt` for the template.
 
-**Location**: Root directory (`void_browser/.env`)
+**Location**: Root directory (`vex_browser/.env`)
 
 ### App Configuration
 
@@ -211,7 +211,7 @@ For complete build and publishing instructions, see:
 ## 📁 Project Structure
 
 ```
-void_browser/
+vex_browser/
 ├── android/                 # Android-specific files
 │   ├── app/
 │   │   ├── build.gradle.kts # Build configuration
@@ -307,8 +307,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/void-browser/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/void-browser/discussions)
+- **Issues**: [GitHub Issues](https://github.com/yourusername/vex-browser/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/yourusername/vex-browser/discussions)
 - **Email**: support@voidbrowser.com (if applicable)
 
 ---
@@ -336,7 +336,7 @@ If you find this project useful, please consider giving it a star ⭐!
 
 **Made with ❤️ using Flutter**
 
-[⬆ Back to Top](#void-browser)
+[⬆ Back to Top](#vex-fast-privacy-browser)
 
 </div>
 

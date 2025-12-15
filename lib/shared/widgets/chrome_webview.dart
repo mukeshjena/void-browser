@@ -492,7 +492,7 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> with AutomaticKee
                     try {
                       await Share.share(
                         _currentUrl,
-                        subject: _currentTitle.isNotEmpty ? _currentTitle : 'Shared from Void Browser',
+                        subject: _currentTitle.isNotEmpty ? _currentTitle : 'Shared from Vex Fast Privacy Browser',
                       );
                     } catch (e) {
                       if (context.mounted) {
@@ -719,7 +719,7 @@ class _ChromeWebViewState extends ConsumerState<ChromeWebView> with AutomaticKee
                       try {
                         Share.share(
                           url,
-                          subject: title.isNotEmpty ? title : 'Shared from Void Browser',
+                          subject: title.isNotEmpty ? title : 'Shared from Vex Fast Privacy Browser',
                         );
                       } catch (e) {
                         if (mounted) {

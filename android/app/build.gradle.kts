@@ -37,8 +37,8 @@ android {
         applicationId = "com.voidbrowser.app"
         minSdk = flutter.minSdkVersion
         targetSdk = 36
-        versionCode = 7
-        versionName = "1.1.3"
+        versionCode = 11
+        versionName = "2.0.1"
         multiDexEnabled = true
         
         // Enable vector drawables to reduce APK size
@@ -118,4 +118,44 @@ dependencies {
     implementation("androidx.core:core:1.13.1")
     // AndroidX Activity for edge-to-edge support (Android 15+)
     implementation("androidx.activity:activity:1.9.2")
+}
+
+// Permanent fix: Copy AAB to Flutter's expected location after bundle build
+afterEvaluate {
+    tasks.named("bundleRelease")?.configure {
+        doLast {
+            val gradleOutputDir = file("${project.buildDir}/outputs/bundle/release")
+            // Correct path: from android/app, go up to project root, then to build/app/outputs/bundle/release
+            val flutterOutputDir = file("${project.rootDir.parentFile}/build/app/outputs/bundle/release")
+            val aabFile = file("${gradleOutputDir}/app-release.aab")
+            
+            if (aabFile.exists()) {
+                flutterOutputDir.mkdirs()
+                val targetFile = file("${flutterOutputDir}/app-release.aab")
+                aabFile.copyTo(targetFile, overwrite = true)
+                println("✓ Copied AAB to Flutter expected location: ${targetFile.absolutePath}")
+            } else {
+                println("⚠ AAB file not found at: ${aabFile.absolutePath}")
+            }
+        }
+    }
+    
+    // Permanent fix: Copy APK to Flutter's expected location after APK build
+    tasks.named("assembleRelease")?.configure {
+        doLast {
+            val gradleOutputDir = file("${project.buildDir}/outputs/apk/release")
+            // Correct path: from android/app, go up to project root, then to build/app/outputs/flutter-apk
+            val flutterOutputDir = file("${project.rootDir.parentFile}/build/app/outputs/flutter-apk")
+            val apkFile = file("${gradleOutputDir}/app-release.apk")
+            
+            if (apkFile.exists()) {
+                flutterOutputDir.mkdirs()
+                val targetFile = file("${flutterOutputDir}/app-release.apk")
+                apkFile.copyTo(targetFile, overwrite = true)
+                println("✓ Copied APK to Flutter expected location: ${targetFile.absolutePath}")
+            } else {
+                println("⚠ APK file not found at: ${apkFile.absolutePath}")
+            }
+        }
+    }
 }

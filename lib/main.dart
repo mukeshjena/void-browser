@@ -53,7 +53,7 @@ void main() async {
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
       ],
-      child: const VoidBrowserApp(),
+      child: const VexBrowserApp(),
     ),
   );
 }

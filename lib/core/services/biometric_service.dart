@@ -33,7 +33,7 @@ class BiometricService {
   }
 
   /// Authenticate using biometrics
-  Future<bool> authenticate({String reason = 'Authenticate to unlock Void Browser'}) async {
+  Future<bool> authenticate({String reason = 'Authenticate to unlock Vex Fast Privacy Browser'}) async {
     try {
       // Check if device supports biometrics
       final isDeviceSupported = await _localAuth.isDeviceSupported();

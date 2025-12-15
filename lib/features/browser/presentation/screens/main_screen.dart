@@ -63,15 +63,18 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           showUnselectedLabels: false,
           items: const [
             BottomNavigationBarItem(
-              icon: Icon(Icons.explore, size: 28),
+              icon: Icon(Icons.explore, size: 24),
+              activeIcon: Icon(Icons.explore, size: 24),
               label: '',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.article, size: 28),
+              icon: Icon(Icons.article, size: 24),
+              activeIcon: Icon(Icons.article, size: 24),
               label: '',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.collections, size: 28),
+              icon: Icon(Icons.collections, size: 24),
+              activeIcon: Icon(Icons.collections, size: 24),
               label: '',
             ),
           ],

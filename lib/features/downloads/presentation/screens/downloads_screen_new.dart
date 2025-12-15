@@ -445,7 +445,7 @@ class DownloadsScreenNew extends ConsumerWidget {
                       if (await file.exists()) {
                         await Share.shareXFiles(
                           [XFile(download.savedPath!)],
-                          text: 'Shared from Void Browser',
+                          text: 'Shared from Vex Fast Privacy Browser',
                         );
                       } else {
                         if (context.mounted) {
